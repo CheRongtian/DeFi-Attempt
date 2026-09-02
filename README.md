@@ -2,8 +2,25 @@
 
 A Solidity-based overcollateralized lending protocol. The smart contracts are built and tested with Foundry.
 
-## Prerequisites
+## Project Structure
 
+```text
+DeFi/
+├── contracts/
+│   ├── foundry.toml
+│   ├── lib/
+│   │   └── openzeppelin-contracts/
+│   ├── src/
+│   │   └── mocks/
+│   │       └── MockUSDC.sol
+│   └── test/
+│       ├── MockUSDC.t.sol
+│       └── Smoke.t.sol
+├── .gitignore
+└── README.md
+```
+
+## 0. Prerequisites
 - macOS or Linux
 - Bash or Zsh
 - `curl`
@@ -13,27 +30,20 @@ A Solidity-based overcollateralized lending protocol. The smart contracts are bu
 
 ```bash
 curl -L https://getfoundry.sh/install | bash
-export PATH="$PATH:$HOME/.foundry/bin"
+export PATH="$PATH:$HOME/.foundry/bin" # forge: command not found
 foundryup
-```
 
-Add Foundry to the PATH for future Zsh sessions:
-
-```bash
+# Add Foundry to the PATH for future Zsh sessions:
 echo 'export PATH="$PATH:$HOME/.foundry/bin"' >> ~/.zshrc
-source ~/.zshrc
+source ~/.zshrc # To make it persistent, add the same line to `~/.zshrc`, then reload the configuration
 ```
-
 ## Verify the Toolchain
 
-Verify the Forge installation:
-
 ```bash
+# Verify the Forge installation: 
 forge --version
 ```
-
-## Current Solidity Project Layout
-
+## Prerequisities Structure
 ```text
 contracts/
 ├── foundry.toml
@@ -54,21 +64,12 @@ libs = ["lib"]
 
 ## Build and Test
 
-Enter the Solidity project directory:
-
 ```bash
+# Enter the Solidity project directory:
 cd contracts
-```
-
-Build the contracts:
-
-```bash
+# Build the contracts:
 forge build
-```
-
-Run the tests:
-
-```bash
+# Run the tests:
 forge test
 ```
 
@@ -82,49 +83,15 @@ Current expected result:
 
 On the first run, Foundry may automatically download Solc 0.8.36 for `Smoke.t.sol`. Compilation and testing continue after the download finishes.
 
-Check Solidity formatting:
-
 ```bash
+# Check Solidity formatting:
 forge fmt --check
-```
-
-Remove Foundry-generated `out/` and `cache/` artifacts:
-
-```bash
+# Remove Foundry-generated `out/` and `cache/` artifacts:
 forge clean
 ```
 
-## Troubleshooting
-
-### `forge: command not found`
-
-The current shell has not loaded the Foundry path. Run:
-
-```bash
-export PATH="$PATH:$HOME/.foundry/bin"
-```
-
-To make it persistent, add the same line to `~/.zshrc`, then reload the configuration:
-
-```bash
-source ~/.zshrc
-```
-
-### `foundry.toml` reports `expected a map`
-
-Make sure the configuration fields are under `[profile.default]`:
-
-```toml
-[profile.default]
-src = "src"
-test = "test"
-out = "out"
-libs = ["lib"]
-```
-
-### `No tests found in project`
-
-Forge discovers test functions whose names begin with `test`, for example:
+## Test
+Use Example:
 
 ```solidity
 function testSmoke() public pure {
@@ -132,10 +99,28 @@ function testSmoke() public pure {
 }
 ```
 
-## Implemented
+## 1. Mock USDC
+
+A test-only ERC-20 token that simulates USDC using OpenZeppelin Contracts.
 
 ```text
-Foundry project configuration
-Solidity compilation setup
-SmokeTest basic test
+Name: Mock USDC
+Symbol: mUSDC
+Decimals: 6
+Minting: unrestricted for local and testnet use
+```
+
+Files:
+
+```text
+contracts/src/mocks/MockUSDC.sol
+contracts/test/MockUSDC.t.sol
+```
+
+Build and test:
+
+```bash
+cd contracts
+forge build
+forge test --match-contract MockUSDCTest -vv
 ```

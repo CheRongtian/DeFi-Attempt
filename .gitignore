@@ -3,7 +3,7 @@ IMPLEMENTATION.md
 
 contracts/cache/
 contracts/out/
-
+.idea/
 .env
 .env.*
 !.env.example
