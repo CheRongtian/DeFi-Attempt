@@ -1,0 +1,11 @@
+PLAN.md
+IMPLEMENTATION.md
+
+contracts/cache/
+contracts/out/
+
+.env
+.env.*
+!.env.example
+*.swp
+*.swo
