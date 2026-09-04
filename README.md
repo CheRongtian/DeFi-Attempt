@@ -1,5 +1,7 @@
 # Distributed DeFi Lending Protocol
 
+[简体中文](README.zh-CN.md)
+
 A Solidity-based overcollateralized lending protocol. The smart contracts are built and tested with Foundry.
 
 ## Project Structure
@@ -12,15 +14,19 @@ DeFi/
 │   │   └── openzeppelin-contracts/
 │   ├── src/
 │   │   └── mocks/
-│   │       └── MockUSDC.sol
+│   │       ├── MockUSDC.sol
+│   │       └── MockWETH.sol
 │   └── test/
 │       ├── MockUSDC.t.sol
+│       ├── MockWETH.t.sol
 │       └── Smoke.t.sol
 ├── .gitignore
-└── README.md
+├── README.md
+└── README.zh-CN.md
 ```
 
-## 0. Prerequisites
+## Prerequisites
+
 - macOS or Linux
 - Bash or Zsh
 - `curl`
@@ -37,40 +43,21 @@ foundryup
 echo 'export PATH="$PATH:$HOME/.foundry/bin"' >> ~/.zshrc
 source ~/.zshrc # To make it persistent, add the same line to `~/.zshrc`, then reload the configuration
 ```
+
 ## Verify the Toolchain
 
 ```bash
 # Verify the Forge installation: 
 forge --version
 ```
-## Prerequisities Structure
-```text
-contracts/
-├── foundry.toml
-├── src/
-└── test/
-    └── Smoke.t.sol
-```
 
-The Foundry configuration is located at `contracts/foundry.toml`:
-
-```toml
-[profile.default]
-src = "src"
-test = "test"
-out = "out"
-libs = ["lib"]
-```
-
-## Build and Test
+## Verify the Setup
 
 ```bash
 # Enter the Solidity project directory:
 cd contracts
-# Build the contracts:
-forge build
-# Run the tests:
-forge test
+# Verify the local Foundry setup:
+forge test --match-contract SmokeTest
 ```
 
 Current expected result:
@@ -83,6 +70,17 @@ Current expected result:
 
 On the first run, Foundry may automatically download Solc 0.8.36 for `Smoke.t.sol`. Compilation and testing continue after the download finishes.
 
+## Build and Test
+
+```bash
+# Enter the Solidity project directory:
+cd contracts
+# Build the contracts:
+forge build
+# Run the tests:
+forge test
+```
+
 ```bash
 # Check Solidity formatting:
 forge fmt --check
@@ -90,16 +88,9 @@ forge fmt --check
 forge clean
 ```
 
-## Test
-Use Example:
+## Implemented Features
 
-```solidity
-function testSmoke() public pure {
-    assert(1 + 1 == 2);
-}
-```
-
-## 1. Mock USDC
+### Mock USDC
 
 A test-only ERC-20 token that simulates USDC using OpenZeppelin Contracts.
 
@@ -117,10 +108,20 @@ contracts/src/mocks/MockUSDC.sol
 contracts/test/MockUSDC.t.sol
 ```
 
-Build and test:
+### Mock WETH
 
-```bash
-cd contracts
-forge build
-forge test --match-contract MockUSDCTest -vv
+A test-only ERC-20 token used as WETH collateral. It does not implement ETH wrapping or unwrapping.
+
+```text
+Name: Mock WETH
+Symbol: mWETH
+Decimals: 18
+Minting: unrestricted for local and testnet use
+```
+
+Files:
+
+```text
+contracts/src/mocks/MockWETH.sol
+contracts/test/MockWETH.t.sol
 ```
