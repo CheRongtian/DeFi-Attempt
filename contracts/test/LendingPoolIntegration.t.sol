@@ -65,8 +65,12 @@ contract LendingPoolIntegrationTest {
 
         assert(pool.usdcSupplies(CHARLIE) == 50_000e6);
         assert(pool.availableUsdcLiquidity() == 50_000e6);
+        assert(pool.totalUsdcSupplies() == 50_000e6);
+        assert(pool.totalPerformingUsdcDebt() == 0);
+        assert(pool.badDebt() == 0);
         assert(pool.usdcDebt(ALICE) == 0);
         assert(pool.wethCollateral(ALICE) == 0);
+        assert(pool.totalWethCollateral() == 0);
         assert(usdc.balanceOf(address(pool)) == 50_000e6);
         assert(weth.balanceOf(address(pool)) == 0);
         assert(usdc.balanceOf(ALICE) == 0);

@@ -162,5 +162,57 @@
       "expected_down": "115792089237316195423570985008687907853269984665640564039457584007913129630000",
       "expected_up": "115792089237316195423570985008687907853269984665640564039457584007913129630000"
     }
+  },
+  "risk_position": {
+    "zero_debt": {
+      "collateral_amount": "0",
+      "weth_price": "300000000000",
+      "debt_amount": "0",
+      "usdc_price": "100000000",
+      "expected_collateral_value": "0",
+      "expected_debt_value": "0",
+      "expected_max_borrow": "0",
+      "expected_health_factor": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+    },
+    "standard_position": {
+      "collateral_amount": "10000000000000000000",
+      "weth_price": "300000000000",
+      "debt_amount": "10000000000",
+      "usdc_price": "100000000",
+      "expected_collateral_value": "30000000000000000000000",
+      "expected_debt_value": "10000000000000000000000",
+      "expected_max_borrow": "22500000000000000000000",
+      "expected_health_factor": "2400000000000000000"
+    },
+    "exact_liquidation_threshold": {
+      "collateral_amount": "10000000000000000000",
+      "weth_price": "300000000000",
+      "debt_amount": "24000000000",
+      "usdc_price": "100000000",
+      "expected_collateral_value": "30000000000000000000000",
+      "expected_debt_value": "24000000000000000000000",
+      "expected_max_borrow": "22500000000000000000000",
+      "expected_health_factor": "1000000000000000000"
+    },
+    "underwater_after_price_drop": {
+      "collateral_amount": "10000000000000000000",
+      "weth_price": "100000000000",
+      "debt_amount": "10000000000",
+      "usdc_price": "100000000",
+      "expected_collateral_value": "10000000000000000000000",
+      "expected_debt_value": "10000000000000000000000",
+      "expected_max_borrow": "7500000000000000000000",
+      "expected_health_factor": "800000000000000000"
+    },
+    "fractional_rounding": {
+      "collateral_amount": "1",
+      "weth_price": "300000000001",
+      "debt_amount": "1",
+      "usdc_price": "1",
+      "expected_collateral_value": "3000",
+      "expected_debt_value": "10000",
+      "expected_max_borrow": "2250",
+      "expected_health_factor": "240000000000000000"
+    }
   }
 }

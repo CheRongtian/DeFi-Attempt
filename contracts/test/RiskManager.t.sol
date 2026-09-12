@@ -163,6 +163,19 @@ contract RiskManagerTest {
 
         assert(riskManager.healthFactor(10e18, 10_000e6) == 0.8e18);
     }
+
+    function testCollateralAmountForValueRoundsDown() public view {
+        assert(riskManager.collateralAmountForValueDown(1e18) == 333_333_333_333_333);
+        assert(riskManager.collateralAmountForValueDown(10_500e18) == 3.5e18);
+    }
+
+    function testDebtAmountForValueRoundsDown() public {
+        assert(riskManager.debtAmountForValueDown(1e18) == 1e6);
+
+        oracle.setPrice(address(usdc), 101_000_000);
+        assert(riskManager.debtAmountForValueDown(101e18) == 100e6);
+        assert(riskManager.debtAmountForValueDown(1) == 0);
+    }
 }
 
 // forge-lint: disable-end(literal-instead-of-constant)

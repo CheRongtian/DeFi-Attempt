@@ -14,6 +14,7 @@ DeFi/
 │   │   └── openzeppelin-contracts/
 │   ├── src/
 │   │   ├── LendingPool.sol
+│   │   ├── LiquidationManager.sol
 │   │   ├── PriceOracle.sol
 │   │   ├── RiskManager.sol
 │   │   ├── libraries/
@@ -24,11 +25,15 @@ DeFi/
 │   └── test/
 │       ├── LendingPool.t.sol
 │       ├── LendingPoolIntegration.t.sol
+│       ├── LendingMvpFuzz.t.sol
+│       ├── LendingMvpInvariant.t.sol
+│       ├── LiquidationManager.t.sol
 │       ├── MathLibGolden.t.sol
 │       ├── MathLib.t.sol
 │       ├── MockUSDC.t.sol
 │       ├── MockWETH.t.sol
 │       ├── PriceOracle.t.sol
+│       ├── RiskManagerGolden.t.sol
 │       ├── RiskManager.t.sol
 │       └── Smoke.t.sol
 ├── tests/
@@ -189,4 +194,20 @@ Files:
 contracts/src/LendingPool.sol
 contracts/test/LendingPool.t.sol
 contracts/test/LendingPoolIntegration.t.sol
+```
+
+### Liquidation and Bad Debt
+
+Unhealthy positions with a health factor below 1 can be partially liquidated with a 50% close factor and a 5% liquidation bonus. Repayment caps, minimum collateral output, rounding, debt dust, collateral exhaustion, and one-time bad debt recognition are handled explicitly.
+
+Fuzz tests and stateful invariants verify borrowing and liquidation bounds, token balances, and the pool's USDC accounting identity.
+
+Files:
+
+```text
+contracts/src/LiquidationManager.sol
+contracts/test/LiquidationManager.t.sol
+contracts/test/LendingMvpFuzz.t.sol
+contracts/test/LendingMvpInvariant.t.sol
+contracts/test/RiskManagerGolden.t.sol
 ```

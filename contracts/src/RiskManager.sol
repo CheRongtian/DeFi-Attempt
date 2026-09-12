@@ -43,6 +43,19 @@ contract RiskManager {
         return MathLib.toUsdWadUp(usdcAmount, usdcPrice, USDC_DECIMALS);
     }
 
+    /// @notice Converts a USD WAD value to WETH base units, rounding down.
+    function collateralAmountForValueDown(uint256 usdValueWad) public view returns (uint256) {
+        uint256 wethPrice = PRICE_ORACLE.getPrice(WETH);
+        return MathLib.mulDivDown(usdValueWad, MathLib.ORACLE_PRICE_SCALE, wethPrice);
+    }
+
+    /// @notice Converts a USD WAD value to USDC base units, rounding down.
+    function debtAmountForValueDown(uint256 usdValueWad) public view returns (uint256) {
+        uint256 usdcPrice = PRICE_ORACLE.getPrice(USDC);
+        uint256 valueAtTokenPrecision = MathLib.mulDivDown(usdValueWad, 1, usdcPrice);
+        return MathLib.mulDivDown(valueAtTokenPrecision, 1, MathLib.BPS);
+    }
+
     /// @notice Returns the maximum USDC debt value in USD WAD allowed by the WETH LTV.
     function maxBorrow(uint256 wethCollateralAmount) public view returns (uint256) {
         return MathLib.mulDivDown(collateralValue(wethCollateralAmount), WETH_LTV_BPS, MathLib.BPS);

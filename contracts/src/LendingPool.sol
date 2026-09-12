@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.36;
 
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -9,10 +10,11 @@ import {MathLib} from "./libraries/MathLib.sol";
 
 /// @title MVP Lending Pool
 /// @notice Supports WETH collateral and USDC liquidity, borrowing, repayment and withdrawal.
-contract LendingPool is ReentrancyGuard {
+contract LendingPool is ReentrancyGuard, AccessControl {
     using SafeERC20 for IERC20;
 
     uint256 public constant MINIMUM_USDC_BORROW = 1e6;
+    bytes32 public constant LIQUIDATION_ROLE = keccak256("LIQUIDATION_ROLE");
 
     RiskManager public immutable RISK_MANAGER;
     IERC20 public immutable WETH;
@@ -23,6 +25,10 @@ contract LendingPool is ReentrancyGuard {
     mapping(address user => uint256 amount) public usdcDebt;
 
     uint256 public availableUsdcLiquidity;
+    uint256 public totalUsdcSupplies;
+    uint256 public totalWethCollateral;
+    uint256 public totalPerformingUsdcDebt;
+    uint256 public badDebt;
 
     error InvalidAddress();
     error ZeroAmount();
@@ -36,11 +42,22 @@ contract LendingPool is ReentrancyGuard {
     error UnhealthyPosition(uint256 healthFactor);
     error NoDebt();
     error RemainingDebtBelowMinimum(uint256 remainingDebt, uint256 minimum);
+    error LiquidationExceedsDebt(uint256 debt, uint256 repayment);
+    error LiquidationExceedsCollateral(uint256 collateral, uint256 seized);
 
     event Supplied(address indexed user, address indexed asset, uint256 amount);
     event Withdrawn(address indexed user, address indexed asset, uint256 amount);
     event Borrowed(address indexed user, address indexed asset, uint256 amount);
     event Repaid(address indexed user, address indexed asset, uint256 amount, uint256 remainingDebt);
+    event Liquidated(
+        address indexed liquidator,
+        address indexed borrower,
+        address indexed debtAsset,
+        address collateralAsset,
+        uint256 repaidAmount,
+        uint256 collateralSeized
+    );
+    event BadDebtRecognized(address indexed borrower, uint256 amount);
 
     constructor(RiskManager riskManager_) {
         if (address(riskManager_) == address(0)) revert InvalidAddress();
@@ -48,6 +65,7 @@ contract LendingPool is ReentrancyGuard {
         RISK_MANAGER = riskManager_;
         WETH = IERC20(riskManager_.WETH());
         USDC = IERC20(riskManager_.USDC());
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
     /// @notice Supplies USDC liquidity or WETH collateral for the caller.
@@ -58,9 +76,11 @@ contract LendingPool is ReentrancyGuard {
         if (asset == address(USDC)) {
             usdcSupplies[msg.sender] += amount;
             availableUsdcLiquidity += amount;
+            totalUsdcSupplies += amount;
             USDC.safeTransferFrom(msg.sender, address(this), amount);
         } else if (asset == address(WETH)) {
             wethCollateral[msg.sender] += amount;
+            totalWethCollateral += amount;
             WETH.safeTransferFrom(msg.sender, address(this), amount);
         } else {
             revert UnsupportedAsset(asset);
@@ -91,6 +111,7 @@ contract LendingPool is ReentrancyGuard {
 
         usdcDebt[msg.sender] = newDebt;
         availableUsdcLiquidity = available - amount;
+        totalPerformingUsdcDebt += amount;
         USDC.safeTransfer(msg.sender, amount);
 
         emit Borrowed(msg.sender, asset, amount);
@@ -114,6 +135,7 @@ contract LendingPool is ReentrancyGuard {
 
         usdcDebt[msg.sender] = remainingDebt;
         availableUsdcLiquidity += repaidAmount;
+        totalPerformingUsdcDebt -= repaidAmount;
         USDC.safeTransferFrom(msg.sender, address(this), repaidAmount);
 
         emit Repaid(msg.sender, asset, repaidAmount, remainingDebt);
@@ -143,6 +165,7 @@ contract LendingPool is ReentrancyGuard {
 
         usdcSupplies[msg.sender] = supplied - amount;
         availableUsdcLiquidity = available - amount;
+        totalUsdcSupplies -= amount;
         USDC.safeTransfer(msg.sender, amount);
     }
 
@@ -164,6 +187,51 @@ contract LendingPool is ReentrancyGuard {
         }
 
         wethCollateral[msg.sender] = remainingCollateral;
+        totalWethCollateral -= amount;
         WETH.safeTransfer(msg.sender, amount);
+    }
+
+    /// @notice Applies a liquidation calculated by an authorized liquidation manager.
+    /// @dev Pulls USDC from the liquidator and sends seized WETH after updating all accounting.
+    function executeLiquidation(address borrower, address liquidator, uint256 repaidAmount, uint256 collateralSeized)
+        external
+        nonReentrant
+        onlyRole(LIQUIDATION_ROLE)
+        returns (uint256 recognizedBadDebt)
+    {
+        if (borrower == address(0) || liquidator == address(0)) revert InvalidAddress();
+        if (repaidAmount == 0 || collateralSeized == 0) revert ZeroAmount();
+
+        uint256 currentDebt = usdcDebt[borrower];
+        uint256 currentCollateral = wethCollateral[borrower];
+        if (repaidAmount > currentDebt) revert LiquidationExceedsDebt(currentDebt, repaidAmount);
+        if (collateralSeized > currentCollateral) {
+            revert LiquidationExceedsCollateral(currentCollateral, collateralSeized);
+        }
+
+        uint256 remainingDebt = currentDebt - repaidAmount;
+        uint256 remainingCollateral = currentCollateral - collateralSeized;
+
+        usdcDebt[borrower] = remainingDebt;
+        wethCollateral[borrower] = remainingCollateral;
+        totalPerformingUsdcDebt -= repaidAmount;
+        totalWethCollateral -= collateralSeized;
+        availableUsdcLiquidity += repaidAmount;
+
+        if (remainingCollateral == 0 && remainingDebt != 0) {
+            recognizedBadDebt = remainingDebt;
+            usdcDebt[borrower] = 0;
+            remainingDebt = 0;
+            totalPerformingUsdcDebt -= recognizedBadDebt;
+            badDebt += recognizedBadDebt;
+        }
+
+        // The trusted liquidation manager supplies the initiating liquidator, who approved this pool directly.
+        // forge-lint: disable-next-line(arbitrary-send-erc20)
+        USDC.safeTransferFrom(liquidator, address(this), repaidAmount);
+        WETH.safeTransfer(liquidator, collateralSeized);
+
+        emit Liquidated(liquidator, borrower, address(USDC), address(WETH), repaidAmount, collateralSeized);
+        if (recognizedBadDebt != 0) emit BadDebtRecognized(borrower, recognizedBadDebt);
     }
 }

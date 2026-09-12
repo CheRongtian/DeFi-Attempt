@@ -14,6 +14,7 @@ DeFi/
 │   │   └── openzeppelin-contracts/
 │   ├── src/
 │   │   ├── LendingPool.sol
+│   │   ├── LiquidationManager.sol
 │   │   ├── PriceOracle.sol
 │   │   ├── RiskManager.sol
 │   │   ├── libraries/
@@ -24,11 +25,15 @@ DeFi/
 │   └── test/
 │       ├── LendingPool.t.sol
 │       ├── LendingPoolIntegration.t.sol
+│       ├── LendingMvpFuzz.t.sol
+│       ├── LendingMvpInvariant.t.sol
+│       ├── LiquidationManager.t.sol
 │       ├── MathLibGolden.t.sol
 │       ├── MathLib.t.sol
 │       ├── MockUSDC.t.sol
 │       ├── MockWETH.t.sol
 │       ├── PriceOracle.t.sol
+│       ├── RiskManagerGolden.t.sol
 │       ├── RiskManager.t.sol
 │       └── Smoke.t.sol
 ├── tests/
@@ -189,4 +194,20 @@ contracts/test/RiskManager.t.sol
 contracts/src/LendingPool.sol
 contracts/test/LendingPool.t.sol
 contracts/test/LendingPoolIntegration.t.sol
+```
+
+### 清算与坏账
+
+健康因子低于 1 的仓位可以进行部分清算，Close Factor 为 50%，清算奖励为 5%。清算流程明确处理还款上限、最小抵押物输出、精度舍入、债务碎片、抵押物耗尽和坏账单次确认。
+
+Fuzz 测试和 Stateful Invariant 用于验证借款与清算边界、代币余额，以及借贷池的 USDC 会计恒等式。
+
+文件：
+
+```text
+contracts/src/LiquidationManager.sol
+contracts/test/LiquidationManager.t.sol
+contracts/test/LendingMvpFuzz.t.sol
+contracts/test/LendingMvpInvariant.t.sol
+contracts/test/RiskManagerGolden.t.sol
 ```
