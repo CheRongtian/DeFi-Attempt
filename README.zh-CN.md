@@ -13,18 +13,23 @@ DeFi/
 │   ├── lib/
 │   │   └── openzeppelin-contracts/
 │   ├── src/
+│   │   ├── LendingPool.sol
+│   │   ├── PriceOracle.sol
+│   │   ├── RiskManager.sol
 │   │   ├── libraries/
 │   │   │   └── MathLib.sol
-│   │   ├── mocks/
-│   │   │   ├── MockUSDC.sol
-│   │   │   └── MockWETH.sol
-│   │   └── PriceOracle.sol
+│   │   └── mocks/
+│   │       ├── MockUSDC.sol
+│   │       └── MockWETH.sol
 │   └── test/
-│       ├── MathLib.t.sol
+│       ├── LendingPool.t.sol
+│       ├── LendingPoolIntegration.t.sol
 │       ├── MathLibGolden.t.sol
+│       ├── MathLib.t.sol
 │       ├── MockUSDC.t.sol
 │       ├── MockWETH.t.sol
 │       ├── PriceOracle.t.sol
+│       ├── RiskManager.t.sol
 │       └── Smoke.t.sol
 ├── tests/
 │   └── golden/
@@ -159,4 +164,29 @@ contracts/src/libraries/MathLib.sol
 contracts/test/MathLib.t.sol
 contracts/test/MathLibGolden.t.sol
 tests/golden/risk_vectors.json
+```
+
+### 风险管理
+
+使用 75% LTV 和 80% 清算阈值计算 WETH 抵押价值与 USDC 债务价值。健康因子采用保守舍入，无债务仓位始终视为健康。
+
+文件：
+
+```text
+contracts/src/RiskManager.sol
+contracts/test/RiskManager.t.sol
+```
+
+### 借贷池
+
+支持 USDC 流动性供应、WETH 抵押、USDC 借款与还款，以及安全提款。借贷池会检查可用流动性、借款额度、健康因子、最低债务和价格有效期。
+
+集成测试覆盖完整的供应、借款、还款和抵押物提款闭环。
+
+文件：
+
+```text
+contracts/src/LendingPool.sol
+contracts/test/LendingPool.t.sol
+contracts/test/LendingPoolIntegration.t.sol
 ```

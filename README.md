@@ -13,18 +13,23 @@ DeFi/
 │   ├── lib/
 │   │   └── openzeppelin-contracts/
 │   ├── src/
+│   │   ├── LendingPool.sol
+│   │   ├── PriceOracle.sol
+│   │   ├── RiskManager.sol
 │   │   ├── libraries/
 │   │   │   └── MathLib.sol
-│   │   ├── mocks/
-│   │   │   ├── MockUSDC.sol
-│   │   │   └── MockWETH.sol
-│   │   └── PriceOracle.sol
+│   │   └── mocks/
+│   │       ├── MockUSDC.sol
+│   │       └── MockWETH.sol
 │   └── test/
-│       ├── MathLib.t.sol
+│       ├── LendingPool.t.sol
+│       ├── LendingPoolIntegration.t.sol
 │       ├── MathLibGolden.t.sol
+│       ├── MathLib.t.sol
 │       ├── MockUSDC.t.sol
 │       ├── MockWETH.t.sol
 │       ├── PriceOracle.t.sol
+│       ├── RiskManager.t.sol
 │       └── Smoke.t.sol
 ├── tests/
 │   └── golden/
@@ -159,4 +164,29 @@ contracts/src/libraries/MathLib.sol
 contracts/test/MathLib.t.sol
 contracts/test/MathLibGolden.t.sol
 tests/golden/risk_vectors.json
+```
+
+### Risk Management
+
+Calculates WETH collateral and USDC debt values using a 75% LTV and an 80% liquidation threshold. Health factors use conservative rounding and treat positions without debt as healthy.
+
+Files:
+
+```text
+contracts/src/RiskManager.sol
+contracts/test/RiskManager.t.sol
+```
+
+### Lending Pool
+
+Supports USDC liquidity supply, WETH collateral, USDC borrowing and repayment, and safe withdrawals. The pool enforces available liquidity, borrowing capacity, health factor, minimum debt, and stale-price rules.
+
+An integration test covers the complete supply, borrow, repay, and collateral withdrawal lifecycle.
+
+Files:
+
+```text
+contracts/src/LendingPool.sol
+contracts/test/LendingPool.t.sol
+contracts/test/LendingPoolIntegration.t.sol
 ```
