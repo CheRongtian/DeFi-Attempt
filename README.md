@@ -13,13 +13,22 @@ DeFi/
 │   ├── lib/
 │   │   └── openzeppelin-contracts/
 │   ├── src/
-│   │   └── mocks/
-│   │       ├── MockUSDC.sol
-│   │       └── MockWETH.sol
+│   │   ├── libraries/
+│   │   │   └── MathLib.sol
+│   │   ├── mocks/
+│   │   │   ├── MockUSDC.sol
+│   │   │   └── MockWETH.sol
+│   │   └── PriceOracle.sol
 │   └── test/
+│       ├── MathLib.t.sol
+│       ├── MathLibGolden.t.sol
 │       ├── MockUSDC.t.sol
 │       ├── MockWETH.t.sol
+│       ├── PriceOracle.t.sol
 │       └── Smoke.t.sol
+├── tests/
+│   └── golden/
+│       └── risk_vectors.json
 ├── .gitignore
 ├── README.md
 └── README.zh-CN.md
@@ -124,4 +133,30 @@ Files:
 ```text
 contracts/src/mocks/MockWETH.sol
 contracts/test/MockWETH.t.sol
+```
+
+### Price Oracle
+
+An administrator-managed price oracle with 8-decimal prices, asset registration, update timestamps, and stale-price validation.
+
+Files:
+
+```text
+contracts/src/PriceOracle.sol
+contracts/test/PriceOracle.t.sol
+```
+
+### Fixed-Point Math
+
+Shared WAD and BPS math with full-precision multiplication and division, explicit rounding, and USD valuation for 6- and 18-decimal tokens.
+
+Golden vectors provide reusable expected results for Solidity and future off-chain implementations.
+
+Files:
+
+```text
+contracts/src/libraries/MathLib.sol
+contracts/test/MathLib.t.sol
+contracts/test/MathLibGolden.t.sol
+tests/golden/risk_vectors.json
 ```

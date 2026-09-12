@@ -1,0 +1,166 @@
+{
+  "description": "All numeric fields are base-10 integer strings. Amounts use token base units; prices use 8 decimals per whole token; USD results use WAD. Expected values are calculated with arbitrary-precision integer arithmetic before rounding.",
+  "units": {
+    "wad": "1000000000000000000",
+    "bps": "10000",
+    "oracle_price_scale": "100000000"
+  },
+  "mul_div": {
+    "zero_product": {
+      "x": "0",
+      "y": "123456789",
+      "denominator": "3",
+      "expected_down": "0",
+      "expected_up": "0"
+    },
+    "exact": {
+      "x": "6",
+      "y": "7",
+      "denominator": "3",
+      "expected_down": "14",
+      "expected_up": "14"
+    },
+    "fractional": {
+      "x": "10",
+      "y": "10",
+      "denominator": "6",
+      "expected_down": "16",
+      "expected_up": "17"
+    },
+    "below_one": {
+      "x": "1",
+      "y": "1",
+      "denominator": "2",
+      "expected_down": "0",
+      "expected_up": "1"
+    },
+    "basis_points": {
+      "x": "10001",
+      "y": "7500",
+      "denominator": "10000",
+      "expected_down": "7500",
+      "expected_up": "7501"
+    },
+    "wide_product": {
+      "x": "1606938044258990275541962092341162602522202993782792835301376",
+      "y": "1267650600228229401496703205376",
+      "denominator": "1267650600228229401496703205376",
+      "expected_down": "1606938044258990275541962092341162602522202993782792835301376",
+      "expected_up": "1606938044258990275541962092341162602522202993782792835301376"
+    },
+    "wide_product_remainder": {
+      "x": "115792089237316195423570985008687907853269984665640564039457584007913129639934",
+      "y": "115792089237316195423570985008687907853269984665640564039457584007913129639934",
+      "denominator": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "expected_down": "115792089237316195423570985008687907853269984665640564039457584007913129639933",
+      "expected_up": "115792089237316195423570985008687907853269984665640564039457584007913129639934"
+    },
+    "maximum_exact_result": {
+      "x": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "y": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "denominator": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "expected_down": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "expected_up": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+    }
+  },
+  "usd_value": {
+    "weth_whole": {
+      "amount": "10000000000000000000",
+      "price": "300000000000",
+      "token_decimals": "18",
+      "expected_down": "30000000000000000000000",
+      "expected_up": "30000000000000000000000"
+    },
+    "usdc_whole": {
+      "amount": "10000000000",
+      "price": "100000000",
+      "token_decimals": "6",
+      "expected_down": "10000000000000000000000",
+      "expected_up": "10000000000000000000000"
+    },
+    "weth_fractional_amount_and_price": {
+      "amount": "1250000000000000000",
+      "price": "299912345678",
+      "token_decimals": "18",
+      "expected_down": "3748904320975000000000",
+      "expected_up": "3748904320975000000000"
+    },
+    "usdc_fractional_amount_and_price": {
+      "amount": "1234567",
+      "price": "100012345",
+      "token_decimals": "6",
+      "expected_down": "1234719407296150000",
+      "expected_up": "1234719407296150000"
+    },
+    "weth_dust_with_remainder": {
+      "amount": "1",
+      "price": "300000000001",
+      "token_decimals": "18",
+      "expected_down": "3000",
+      "expected_up": "3001"
+    },
+    "weth_below_one_wad_unit": {
+      "amount": "1",
+      "price": "1",
+      "token_decimals": "18",
+      "expected_down": "0",
+      "expected_up": "1"
+    },
+    "usdc_smallest_token_unit": {
+      "amount": "1",
+      "price": "100000000",
+      "token_decimals": "6",
+      "expected_down": "1000000000000",
+      "expected_up": "1000000000000"
+    },
+    "usdc_smallest_oracle_price": {
+      "amount": "1",
+      "price": "1",
+      "token_decimals": "6",
+      "expected_down": "10000",
+      "expected_up": "10000"
+    },
+    "zero_weth_amount": {
+      "amount": "0",
+      "price": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "token_decimals": "18",
+      "expected_down": "0",
+      "expected_up": "0"
+    },
+    "zero_usdc_amount": {
+      "amount": "0",
+      "price": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "token_decimals": "6",
+      "expected_down": "0",
+      "expected_up": "0"
+    },
+    "zero_weth_price": {
+      "amount": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "price": "0",
+      "token_decimals": "18",
+      "expected_down": "0",
+      "expected_up": "0"
+    },
+    "zero_usdc_price": {
+      "amount": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "price": "0",
+      "token_decimals": "6",
+      "expected_down": "0",
+      "expected_up": "0"
+    },
+    "maximum_weth_value": {
+      "amount": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "price": "100000000",
+      "token_decimals": "18",
+      "expected_down": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "expected_up": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+    },
+    "large_usdc_value": {
+      "amount": "11579208923731619542357098500868790785326998466564056403945758400791312963",
+      "price": "1",
+      "token_decimals": "6",
+      "expected_down": "115792089237316195423570985008687907853269984665640564039457584007913129630000",
+      "expected_up": "115792089237316195423570985008687907853269984665640564039457584007913129630000"
+    }
+  }
+}

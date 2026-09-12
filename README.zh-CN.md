@@ -13,13 +13,22 @@ DeFi/
 │   ├── lib/
 │   │   └── openzeppelin-contracts/
 │   ├── src/
-│   │   └── mocks/
-│   │       ├── MockUSDC.sol
-│   │       └── MockWETH.sol
+│   │   ├── libraries/
+│   │   │   └── MathLib.sol
+│   │   ├── mocks/
+│   │   │   ├── MockUSDC.sol
+│   │   │   └── MockWETH.sol
+│   │   └── PriceOracle.sol
 │   └── test/
+│       ├── MathLib.t.sol
+│       ├── MathLibGolden.t.sol
 │       ├── MockUSDC.t.sol
 │       ├── MockWETH.t.sol
+│       ├── PriceOracle.t.sol
 │       └── Smoke.t.sol
+├── tests/
+│   └── golden/
+│       └── risk_vectors.json
 ├── .gitignore
 ├── README.md
 └── README.zh-CN.md
@@ -124,4 +133,30 @@ contracts/test/MockUSDC.t.sol
 ```text
 contracts/src/mocks/MockWETH.sol
 contracts/test/MockWETH.t.sol
+```
+
+### 价格预言机
+
+由管理员维护的价格预言机，价格使用 8 位小数，并支持资产注册、更新时间记录和过期价格校验。
+
+文件：
+
+```text
+contracts/src/PriceOracle.sol
+contracts/test/PriceOracle.t.sol
+```
+
+### 定点数计算
+
+提供统一的 WAD 和 BPS 数学工具，包括高精度乘除、明确的舍入方向，以及 6 位和 18 位代币的 USD 价值换算。
+
+Golden vectors 保存可复用的预期结果，供 Solidity 和未来的链下实现共同验证。
+
+文件：
+
+```text
+contracts/src/libraries/MathLib.sol
+contracts/test/MathLib.t.sol
+contracts/test/MathLibGolden.t.sol
+tests/golden/risk_vectors.json
 ```
