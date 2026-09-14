@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-一个使用 Solidity 开发的超额抵押借贷协议，并包含现代 C++17 Ethereum 公共层。智能合约使用 Foundry，C++ 组件使用 CMake 和 CTest 编译与验证。
+一个使用 Solidity 开发的超额抵押借贷协议，包含现代 C++17 Ethereum 公共层，以及由 PostgreSQL 提供存储的 C++20 Reorg-aware Indexer。智能合约使用 Foundry，C++ 组件使用 CMake 和 CTest 编译与验证。
 
 ## 项目结构
 
@@ -50,39 +50,59 @@ DeFi/
 │       ├── RiskManager.t.sol
 │       └── Smoke.t.sol
 ├── cpp/
-│   └── common/
-│       ├── include/dlp/ethereum/
-│       │   ├── Abi.hpp
-│       │   ├── Address.hpp
-│       │   ├── Hex.hpp
-│       │   ├── Keccak.hpp
-│       │   ├── ProtocolAbi.hpp
-│       │   ├── RpcClient.hpp
-│       │   └── Uint256.hpp
-│       ├── smoke/
-│       │   └── Smoke.cpp
+│   ├── common/
+│   │   ├── include/dlp/ethereum/
+│   │   │   ├── Abi.hpp
+│   │   │   ├── Address.hpp
+│   │   │   ├── Hex.hpp
+│   │   │   ├── Keccak.hpp
+│   │   │   ├── ProtocolAbi.hpp
+│   │   │   ├── RpcClient.hpp
+│   │   │   ├── Uint256.hpp
+│   │   │   └── Uint256Math.hpp
+│   │   ├── smoke/
+│   │   │   └── Smoke.cpp
+│   │   ├── src/
+│   │   │   ├── Abi.cpp
+│   │   │   ├── Address.cpp
+│   │   │   ├── Hex.cpp
+│   │   │   ├── Keccak.cpp
+│   │   │   ├── ProtocolAbi.cpp
+│   │   │   ├── RpcClient.cpp
+│   │   │   ├── Uint256.cpp
+│   │   │   └── Uint256Math.cpp
+│   │   ├── tests/
+│   │   │   ├── AbiTests.cpp
+│   │   │   ├── AddressTests.cpp
+│   │   │   ├── HexTests.cpp
+│   │   │   ├── KeccakTests.cpp
+│   │   │   ├── ProtocolAbiTests.cpp
+│   │   │   ├── RpcClientIntegrationTests.cpp
+│   │   │   ├── Uint256Tests.cpp
+│   │   │   └── Uint256MathTests.cpp
+│   │   └── CMakeLists.txt
+│   └── indexer/
+│       ├── include/dlp/indexer/
 │       ├── src/
-│       │   ├── Abi.cpp
-│       │   ├── Address.cpp
-│       │   ├── Hex.cpp
-│       │   ├── Keccak.cpp
-│       │   ├── ProtocolAbi.cpp
-│       │   ├── RpcClient.cpp
-│       │   └── Uint256.cpp
 │       ├── tests/
-│       │   ├── AbiTests.cpp
-│       │   ├── AddressTests.cpp
-│       │   ├── HexTests.cpp
-│       │   ├── KeccakTests.cpp
-│       │   ├── ProtocolAbiTests.cpp
-│       │   ├── RpcClientIntegrationTests.cpp
-│       │   └── Uint256Tests.cpp
 │       └── CMakeLists.txt
+├── database/
+│   └── migrations/
+│       ├── 001_create_blocks.sql
+│       ├── 002_create_raw_logs.sql
+│       ├── 003_create_sync_state.sql
+│       ├── 004_create_positions.sql
+│       ├── 005_create_markets.sql
+│       └── 006_create_liquidations.sql
+├── scripts/
+│   ├── deploy-local.sh
+│   └── run-local.sh
 ├── tests/
 │   └── golden/
 │       └── risk_vectors.json
 ├── .gitignore
 ├── CMakeLists.txt
+├── compose.yaml
 ├── README.md
 └── README.zh-CN.md
 ```
@@ -92,9 +112,10 @@ DeFi/
 - macOS 或 Linux
 - Bash 或 Zsh
 - `curl`
-- 支持 C++17 的编译器和 CMake 3.20 或更高版本
-- Boost 1.74 或更高版本、nlohmann/json 3.10 或更高版本，以及 GoogleTest
-- Anvil，用于本地 RPC 集成测试
+- 支持 C++20 的编译器和 CMake 3.20 或更高版本
+- Boost 1.74 或更高版本、nlohmann/json 3.10 或更高版本、GoogleTest、libpq 和 libpqxx 8
+- Docker 和 Docker Compose
+- Foundry 与 Anvil，用于本地部署和 RPC 集成测试
 - 可用的网络连接，用于安装 Foundry、下载 Solc，以及首次配置 CMake 时获取固定版本的 Ethereum Keccak 依赖
 
 ## 安装 Foundry
@@ -114,7 +135,7 @@ source ~/.zshrc # 重新加载配置，使修改立即生效
 在使用 Homebrew 的 macOS 上执行：
 
 ```bash
-brew install cmake boost nlohmann-json googletest
+brew install cmake boost nlohmann-json googletest libpq libpqxx
 ```
 
 ## 验证工具链
@@ -173,24 +194,41 @@ forge clean
 在仓库根目录执行：
 
 ```bash
-# 配置并编译 C++17 目标：
+# 配置并编译 C++ 目标：
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 # 运行本地 C++ 测试：
 ctest --test-dir build --output-on-failure
 ```
 
-设置 `DLP_RPC_URL` 前，RPC 集成测试会跳过。在一个终端启动 Anvil，然后在另一个终端运行测试：
+PostgreSQL 集成测试需要启动本地数据库：
 
 ```bash
-anvil
-```
+DLP_POSTGRES_PORT=5433 docker compose up -d postgres
 
-```bash
-DLP_RPC_URL=http://127.0.0.1:8545 \
+DLP_TEST_DATABASE_URL=postgresql://dlp:dlp@127.0.0.1:5433/dlp \
 ctest --test-dir build --output-on-failure \
--R RpcClientIntegrationTests
+-R PostgresStoreIntegrationTests
 ```
+
+协议 RPC 集成测试需要 Anvil 和已部署的合约。运行本地服务后，在另一个终端加载自动生成的环境变量：
+
+```bash
+source .env.local
+
+ctest --test-dir build --output-on-failure \
+-R RpcChainClientIntegrationTests
+```
+
+## 本地运行
+
+完成 C++ 编译后，通过一条命令启动 PostgreSQL、Anvil、部署合约并运行 Indexer：
+
+```bash
+./scripts/run-local.sh
+```
+
+本地脚本默认使用 PostgreSQL `5433` 端口和 Anvil `8546` 端口，合约地址写入已被忽略的 `.env.local`。按 `Ctrl+C` 会停止 Indexer 和由脚本启动的 Anvil，PostgreSQL 数据继续保存在 Docker volume 中。
 
 ## 已实现功能
 
@@ -336,4 +374,20 @@ cpp/common/include/dlp/ethereum/
 cpp/common/src/
 cpp/common/smoke/
 cpp/common/tests/
+```
+
+### PostgreSQL 与 Reorg-aware Indexer
+
+C++20 Indexer 通过轮询读取 Ethereum 区块和协议日志，解码已注册的 ABI 事件，并在 PostgreSQL 中重建仓位、市场账目、价格、清算和坏账状态。每个区块及其原始日志、派生状态和同步游标均在同一个数据库事务中提交。
+
+重启恢复会校验已保存的 canonical block hash。Parent Hash 不匹配时，Indexer 会查找共同祖先、标记孤块，并从 canonical logs 确定性重建状态，同时保留孤块历史。
+
+文件：
+
+```text
+compose.yaml
+database/migrations/
+cpp/indexer/
+scripts/deploy-local.sh
+scripts/run-local.sh
 ```

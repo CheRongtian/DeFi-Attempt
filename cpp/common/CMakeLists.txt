@@ -40,6 +40,7 @@ add_library(
     src/ProtocolAbi.cpp
     src/RpcClient.cpp
     src/Uint256.cpp
+    src/Uint256Math.cpp
 )
 
 add_library(DLP::ethereum_common ALIAS dlp_ethereum_common)
@@ -87,6 +88,7 @@ if(BUILD_TESTING)
         tests/ProtocolAbiTests.cpp
         tests/RpcClientIntegrationTests.cpp
         tests/Uint256Tests.cpp
+        tests/Uint256MathTests.cpp
     )
 
     target_link_libraries(

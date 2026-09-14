@@ -1,6 +1,7 @@
 #include "dlp/ethereum/Uint256.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -136,6 +137,15 @@ std::string Uint256::ToQuantity() const
 
     std::reverse(digits.begin(), digits.end());
     return "0x" + digits;
+}
+
+std::uint64_t Uint256::ToUint64() const
+{
+    if(value_ > std::numeric_limits<std::uint64_t>::max())
+    {
+        throw std::overflow_error("uint256 value does not fit in uint64");
+    }
+    return value_.convert_to<std::uint64_t>();
 }
 
 bool Uint256::IsZero() const noexcept

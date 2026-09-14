@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md)
 
-A Solidity-based overcollateralized lending protocol with a modern C++17 Ethereum common layer. Foundry is used for smart contracts, while CMake and CTest build and verify the C++ components.
+A Solidity-based overcollateralized lending protocol with a modern C++17 Ethereum common layer and a C++20 reorg-aware indexer backed by PostgreSQL. Foundry is used for smart contracts, while CMake and CTest build and verify the C++ components.
 
 ## Project Structure
 
@@ -50,39 +50,59 @@ DeFi/
 │       ├── RiskManager.t.sol
 │       └── Smoke.t.sol
 ├── cpp/
-│   └── common/
-│       ├── include/dlp/ethereum/
-│       │   ├── Abi.hpp
-│       │   ├── Address.hpp
-│       │   ├── Hex.hpp
-│       │   ├── Keccak.hpp
-│       │   ├── ProtocolAbi.hpp
-│       │   ├── RpcClient.hpp
-│       │   └── Uint256.hpp
-│       ├── smoke/
-│       │   └── Smoke.cpp
+│   ├── common/
+│   │   ├── include/dlp/ethereum/
+│   │   │   ├── Abi.hpp
+│   │   │   ├── Address.hpp
+│   │   │   ├── Hex.hpp
+│   │   │   ├── Keccak.hpp
+│   │   │   ├── ProtocolAbi.hpp
+│   │   │   ├── RpcClient.hpp
+│   │   │   ├── Uint256.hpp
+│   │   │   └── Uint256Math.hpp
+│   │   ├── smoke/
+│   │   │   └── Smoke.cpp
+│   │   ├── src/
+│   │   │   ├── Abi.cpp
+│   │   │   ├── Address.cpp
+│   │   │   ├── Hex.cpp
+│   │   │   ├── Keccak.cpp
+│   │   │   ├── ProtocolAbi.cpp
+│   │   │   ├── RpcClient.cpp
+│   │   │   ├── Uint256.cpp
+│   │   │   └── Uint256Math.cpp
+│   │   ├── tests/
+│   │   │   ├── AbiTests.cpp
+│   │   │   ├── AddressTests.cpp
+│   │   │   ├── HexTests.cpp
+│   │   │   ├── KeccakTests.cpp
+│   │   │   ├── ProtocolAbiTests.cpp
+│   │   │   ├── RpcClientIntegrationTests.cpp
+│   │   │   ├── Uint256Tests.cpp
+│   │   │   └── Uint256MathTests.cpp
+│   │   └── CMakeLists.txt
+│   └── indexer/
+│       ├── include/dlp/indexer/
 │       ├── src/
-│       │   ├── Abi.cpp
-│       │   ├── Address.cpp
-│       │   ├── Hex.cpp
-│       │   ├── Keccak.cpp
-│       │   ├── ProtocolAbi.cpp
-│       │   ├── RpcClient.cpp
-│       │   └── Uint256.cpp
 │       ├── tests/
-│       │   ├── AbiTests.cpp
-│       │   ├── AddressTests.cpp
-│       │   ├── HexTests.cpp
-│       │   ├── KeccakTests.cpp
-│       │   ├── ProtocolAbiTests.cpp
-│       │   ├── RpcClientIntegrationTests.cpp
-│       │   └── Uint256Tests.cpp
 │       └── CMakeLists.txt
+├── database/
+│   └── migrations/
+│       ├── 001_create_blocks.sql
+│       ├── 002_create_raw_logs.sql
+│       ├── 003_create_sync_state.sql
+│       ├── 004_create_positions.sql
+│       ├── 005_create_markets.sql
+│       └── 006_create_liquidations.sql
+├── scripts/
+│   ├── deploy-local.sh
+│   └── run-local.sh
 ├── tests/
 │   └── golden/
 │       └── risk_vectors.json
 ├── .gitignore
 ├── CMakeLists.txt
+├── compose.yaml
 ├── README.md
 └── README.zh-CN.md
 ```
@@ -92,9 +112,10 @@ DeFi/
 - macOS or Linux
 - Bash or Zsh
 - `curl`
-- A C++17 compiler and CMake 3.20 or newer
-- Boost 1.74 or newer, nlohmann/json 3.10 or newer, and GoogleTest
-- Anvil for the local RPC integration test
+- A C++20 compiler and CMake 3.20 or newer
+- Boost 1.74 or newer, nlohmann/json 3.10 or newer, GoogleTest, libpq, and libpqxx 8
+- Docker with Docker Compose
+- Foundry with Anvil for local deployment and RPC integration
 - An internet connection for installing Foundry, downloading Solc, and fetching the pinned Ethereum Keccak dependency on the first CMake configuration
 
 ## Install Foundry
@@ -114,7 +135,7 @@ source ~/.zshrc # To make it persistent, add the same line to `~/.zshrc`, then r
 On macOS with Homebrew:
 
 ```bash
-brew install cmake boost nlohmann-json googletest
+brew install cmake boost nlohmann-json googletest libpq libpqxx
 ```
 
 ## Verify the Toolchain
@@ -173,24 +194,41 @@ forge clean
 From the repository root:
 
 ```bash
-# Configure and build the C++17 targets:
+# Configure and build the C++ targets:
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 # Run the local C++ tests:
 ctest --test-dir build --output-on-failure
 ```
 
-The RPC integration test is skipped until `DLP_RPC_URL` is set. Start Anvil in one terminal, then run the test from another:
+The PostgreSQL integration test requires the local database:
 
 ```bash
-anvil
-```
+DLP_POSTGRES_PORT=5433 docker compose up -d postgres
 
-```bash
-DLP_RPC_URL=http://127.0.0.1:8545 \
+DLP_TEST_DATABASE_URL=postgresql://dlp:dlp@127.0.0.1:5433/dlp \
 ctest --test-dir build --output-on-failure \
--R RpcClientIntegrationTests
+-R PostgresStoreIntegrationTests
 ```
+
+The protocol RPC integration test requires Anvil and deployed contracts. After running the local stack, load the generated environment in another terminal:
+
+```bash
+source .env.local
+
+ctest --test-dir build --output-on-failure \
+-R RpcChainClientIntegrationTests
+```
+
+## Run Locally
+
+After building the C++ targets, start PostgreSQL, Anvil, deploy the contracts, and run the Indexer with one command:
+
+```bash
+./scripts/run-local.sh
+```
+
+The local runner uses PostgreSQL port `5433` and Anvil port `8546` by default. Contract addresses are written to the ignored `.env.local` file. Press `Ctrl+C` to stop the Indexer and the Anvil process started by the script; PostgreSQL data remains available in its Docker volume.
 
 ## Implemented Features
 
@@ -336,4 +374,20 @@ cpp/common/include/dlp/ethereum/
 cpp/common/src/
 cpp/common/smoke/
 cpp/common/tests/
+```
+
+### PostgreSQL and Reorg-Aware Indexer
+
+The C++20 Indexer polls Ethereum blocks and protocol logs, decodes the registered ABI events, and reconstructs positions, market accounting, prices, liquidations, and bad debt in PostgreSQL. Each block, its raw logs, the derived state, and the sync cursor are committed atomically.
+
+Restart recovery validates the stored canonical block hash. Parent-hash mismatches trigger common-ancestor discovery, orphan marking, and deterministic state reconstruction from canonical logs while retaining orphaned history.
+
+Files:
+
+```text
+compose.yaml
+database/migrations/
+cpp/indexer/
+scripts/deploy-local.sh
+scripts/run-local.sh
 ```

@@ -28,6 +28,7 @@ public:
     [[nodiscard]] Bytes32 ToBytes() const;
     [[nodiscard]] std::string ToDecimal() const;
     [[nodiscard]] std::string ToQuantity() const;
+    [[nodiscard]] std::uint64_t ToUint64() const;
     [[nodiscard]] bool IsZero() const noexcept;
 
     Uint256& operator+=(const Uint256& other);
