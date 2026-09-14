@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md)
 
-A Solidity-based overcollateralized lending protocol. The smart contracts are built and tested with Foundry.
+A Solidity-based overcollateralized lending protocol with a modern C++17 Ethereum common layer. Foundry is used for smart contracts, while CMake and CTest build and verify the C++ components.
 
 ## Project Structure
 
@@ -49,10 +49,40 @@ DeFi/
 │       ├── RiskManagerGolden.t.sol
 │       ├── RiskManager.t.sol
 │       └── Smoke.t.sol
+├── cpp/
+│   └── common/
+│       ├── include/dlp/ethereum/
+│       │   ├── Abi.hpp
+│       │   ├── Address.hpp
+│       │   ├── Hex.hpp
+│       │   ├── Keccak.hpp
+│       │   ├── ProtocolAbi.hpp
+│       │   ├── RpcClient.hpp
+│       │   └── Uint256.hpp
+│       ├── smoke/
+│       │   └── Smoke.cpp
+│       ├── src/
+│       │   ├── Abi.cpp
+│       │   ├── Address.cpp
+│       │   ├── Hex.cpp
+│       │   ├── Keccak.cpp
+│       │   ├── ProtocolAbi.cpp
+│       │   ├── RpcClient.cpp
+│       │   └── Uint256.cpp
+│       ├── tests/
+│       │   ├── AbiTests.cpp
+│       │   ├── AddressTests.cpp
+│       │   ├── HexTests.cpp
+│       │   ├── KeccakTests.cpp
+│       │   ├── ProtocolAbiTests.cpp
+│       │   ├── RpcClientIntegrationTests.cpp
+│       │   └── Uint256Tests.cpp
+│       └── CMakeLists.txt
 ├── tests/
 │   └── golden/
 │       └── risk_vectors.json
 ├── .gitignore
+├── CMakeLists.txt
 ├── README.md
 └── README.zh-CN.md
 ```
@@ -62,7 +92,10 @@ DeFi/
 - macOS or Linux
 - Bash or Zsh
 - `curl`
-- An internet connection for installing Foundry and downloading the required Solidity compiler on the first run
+- A C++17 compiler and CMake 3.20 or newer
+- Boost 1.74 or newer, nlohmann/json 3.10 or newer, and GoogleTest
+- Anvil for the local RPC integration test
+- An internet connection for installing Foundry, downloading Solc, and fetching the pinned Ethereum Keccak dependency on the first CMake configuration
 
 ## Install Foundry
 
@@ -76,11 +109,24 @@ echo 'export PATH="$PATH:$HOME/.foundry/bin"' >> ~/.zshrc
 source ~/.zshrc # To make it persistent, add the same line to `~/.zshrc`, then reload the configuration
 ```
 
+## Install C++ Dependencies
+
+On macOS with Homebrew:
+
+```bash
+brew install cmake boost nlohmann-json googletest
+```
+
 ## Verify the Toolchain
 
 ```bash
 # Verify the Forge installation: 
 forge --version
+# Verify the C++ toolchain:
+cmake --version
+c++ --version
+# Verify Anvil before running the RPC integration test:
+anvil --version
 ```
 
 ## Verify the Setup
@@ -104,6 +150,8 @@ On the first run, Foundry may automatically download Solc 0.8.36 for `Smoke.t.so
 
 ## Build and Test
 
+### Solidity
+
 ```bash
 # Enter the Solidity project directory:
 cd contracts
@@ -118,6 +166,30 @@ forge test
 forge fmt --check
 # Remove Foundry-generated `out/` and `cache/` artifacts:
 forge clean
+```
+
+### C++
+
+From the repository root:
+
+```bash
+# Configure and build the C++17 targets:
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+# Run the local C++ tests:
+ctest --test-dir build --output-on-failure
+```
+
+The RPC integration test is skipped until `DLP_RPC_URL` is set. Start Anvil in one terminal, then run the test from another:
+
+```bash
+anvil
+```
+
+```bash
+DLP_RPC_URL=http://127.0.0.1:8545 \
+ctest --test-dir build --output-on-failure \
+-R RpcClientIntegrationTests
 ```
 
 ## Implemented Features
@@ -247,4 +319,21 @@ contracts/test/LiquidationManager.t.sol
 contracts/test/LendingMvpFuzz.t.sol
 contracts/test/LendingMvpInvariant.t.sol
 contracts/test/RiskManagerGolden.t.sol
+```
+
+### C++ Ethereum Common Layer
+
+The modern C++17 common layer provides strongly typed Ethereum addresses and checked 256-bit integers, strict hexadecimal conversion, Ethereum-compatible Keccak-256, and fixed-type ABI encoding and event decoding for the current protocol.
+
+Its synchronous HTTP JSON-RPC client uses Boost.Asio and Boost.Beast with structured errors and typed responses. It supports `eth_chainId`, `eth_blockNumber`, `eth_getBlockByNumber`, and `eth_getLogs`, with the complete path verified against Anvil.
+
+Files:
+
+```text
+CMakeLists.txt
+cpp/common/CMakeLists.txt
+cpp/common/include/dlp/ethereum/
+cpp/common/src/
+cpp/common/smoke/
+cpp/common/tests/
 ```

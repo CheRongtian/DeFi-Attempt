@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-一个使用 Solidity 开发的超额抵押借贷协议。智能合约使用 Foundry 编译和测试。
+一个使用 Solidity 开发的超额抵押借贷协议，并包含现代 C++17 Ethereum 公共层。智能合约使用 Foundry，C++ 组件使用 CMake 和 CTest 编译与验证。
 
 ## 项目结构
 
@@ -49,10 +49,40 @@ DeFi/
 │       ├── RiskManagerGolden.t.sol
 │       ├── RiskManager.t.sol
 │       └── Smoke.t.sol
+├── cpp/
+│   └── common/
+│       ├── include/dlp/ethereum/
+│       │   ├── Abi.hpp
+│       │   ├── Address.hpp
+│       │   ├── Hex.hpp
+│       │   ├── Keccak.hpp
+│       │   ├── ProtocolAbi.hpp
+│       │   ├── RpcClient.hpp
+│       │   └── Uint256.hpp
+│       ├── smoke/
+│       │   └── Smoke.cpp
+│       ├── src/
+│       │   ├── Abi.cpp
+│       │   ├── Address.cpp
+│       │   ├── Hex.cpp
+│       │   ├── Keccak.cpp
+│       │   ├── ProtocolAbi.cpp
+│       │   ├── RpcClient.cpp
+│       │   └── Uint256.cpp
+│       ├── tests/
+│       │   ├── AbiTests.cpp
+│       │   ├── AddressTests.cpp
+│       │   ├── HexTests.cpp
+│       │   ├── KeccakTests.cpp
+│       │   ├── ProtocolAbiTests.cpp
+│       │   ├── RpcClientIntegrationTests.cpp
+│       │   └── Uint256Tests.cpp
+│       └── CMakeLists.txt
 ├── tests/
 │   └── golden/
 │       └── risk_vectors.json
 ├── .gitignore
+├── CMakeLists.txt
 ├── README.md
 └── README.zh-CN.md
 ```
@@ -62,7 +92,10 @@ DeFi/
 - macOS 或 Linux
 - Bash 或 Zsh
 - `curl`
-- 可用的网络连接，用于安装 Foundry，以及首次运行时下载所需的 Solidity 编译器
+- 支持 C++17 的编译器和 CMake 3.20 或更高版本
+- Boost 1.74 或更高版本、nlohmann/json 3.10 或更高版本，以及 GoogleTest
+- Anvil，用于本地 RPC 集成测试
+- 可用的网络连接，用于安装 Foundry、下载 Solc，以及首次配置 CMake 时获取固定版本的 Ethereum Keccak 依赖
 
 ## 安装 Foundry
 
@@ -76,11 +109,24 @@ echo 'export PATH="$PATH:$HOME/.foundry/bin"' >> ~/.zshrc
 source ~/.zshrc # 重新加载配置，使修改立即生效
 ```
 
+## 安装 C++ 依赖
+
+在使用 Homebrew 的 macOS 上执行：
+
+```bash
+brew install cmake boost nlohmann-json googletest
+```
+
 ## 验证工具链
 
 ```bash
 # 检查 Forge 是否安装成功：
 forge --version
+# 检查 C++ 工具链：
+cmake --version
+c++ --version
+# 运行 RPC 集成测试前检查 Anvil：
+anvil --version
 ```
 
 ## 验证开发环境
@@ -104,6 +150,8 @@ forge test --match-contract SmokeTest
 
 ## 编译和测试
 
+### Solidity
+
 ```bash
 # 进入 Solidity 项目目录：
 cd contracts
@@ -118,6 +166,30 @@ forge test
 forge fmt --check
 # 删除 Foundry 生成的 `out/` 和 `cache/`：
 forge clean
+```
+
+### C++
+
+在仓库根目录执行：
+
+```bash
+# 配置并编译 C++17 目标：
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+# 运行本地 C++ 测试：
+ctest --test-dir build --output-on-failure
+```
+
+设置 `DLP_RPC_URL` 前，RPC 集成测试会跳过。在一个终端启动 Anvil，然后在另一个终端运行测试：
+
+```bash
+anvil
+```
+
+```bash
+DLP_RPC_URL=http://127.0.0.1:8545 \
+ctest --test-dir build --output-on-failure \
+-R RpcClientIntegrationTests
 ```
 
 ## 已实现功能
@@ -247,4 +319,21 @@ contracts/test/LiquidationManager.t.sol
 contracts/test/LendingMvpFuzz.t.sol
 contracts/test/LendingMvpInvariant.t.sol
 contracts/test/RiskManagerGolden.t.sol
+```
+
+### C++ Ethereum 公共层
+
+现代 C++17 公共层提供强类型 Ethereum 地址、带溢出检查的 256 位整数、严格的十六进制转换、Ethereum 兼容 Keccak-256，以及当前协议所需的固定类型 ABI 编码和事件解码。
+
+同步 HTTP JSON-RPC Client 使用 Boost.Asio 和 Boost.Beast，提供结构化错误与强类型返回值。当前支持 `eth_chainId`、`eth_blockNumber`、`eth_getBlockByNumber` 和 `eth_getLogs`，完整调用路径已通过 Anvil 验证。
+
+文件：
+
+```text
+CMakeLists.txt
+cpp/common/CMakeLists.txt
+cpp/common/include/dlp/ethereum/
+cpp/common/src/
+cpp/common/smoke/
+cpp/common/tests/
 ```

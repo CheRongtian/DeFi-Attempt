@@ -3,6 +3,8 @@ IMPLEMENTATION.md
 
 contracts/cache/
 contracts/out/
+build/
+cmake-build-*/
 .idea/
 .env
 .env.*
