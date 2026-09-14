@@ -1,7 +1,8 @@
 {
-  "description": "All numeric fields are base-10 integer strings. Amounts use token base units; prices use 8 decimals per whole token; USD results use WAD. Expected values are calculated with arbitrary-precision integer arithmetic before rounding.",
+  "description": "All numeric fields are base-10 integer strings. Amounts use token base units; prices use 8 decimals per whole token; USD results use WAD; interest rates and indices use RAY. Expected values are calculated with arbitrary-precision integer arithmetic before rounding.",
   "units": {
     "wad": "1000000000000000000",
+    "ray": "1000000000000000000000000000",
     "bps": "10000",
     "oracle_price_scale": "100000000"
   },
@@ -213,6 +214,118 @@
       "expected_debt_value": "10000",
       "expected_max_borrow": "2250",
       "expected_health_factor": "240000000000000000"
+    }
+  },
+  "interest_rate": {
+    "zero_utilization": {
+      "available_liquidity": "100000000000",
+      "total_debt": "0",
+      "reserve_factor_bps": "1000",
+      "expected_utilization": "0",
+      "expected_borrow_rate": "20000000000000000000000000",
+      "expected_liquidity_rate": "0"
+    },
+    "low_utilization": {
+      "available_liquidity": "90000000000",
+      "total_debt": "10000000000",
+      "reserve_factor_bps": "1000",
+      "expected_utilization": "100000000000000000000000000",
+      "expected_borrow_rate": "30000000000000000000000000",
+      "expected_liquidity_rate": "2700000000000000000000000"
+    },
+    "optimal_utilization": {
+      "available_liquidity": "20000000000",
+      "total_debt": "80000000000",
+      "reserve_factor_bps": "1000",
+      "expected_utilization": "800000000000000000000000000",
+      "expected_borrow_rate": "100000000000000000000000000",
+      "expected_liquidity_rate": "72000000000000000000000000"
+    },
+    "above_optimal": {
+      "available_liquidity": "10000000000",
+      "total_debt": "90000000000",
+      "reserve_factor_bps": "1000",
+      "expected_utilization": "900000000000000000000000000",
+      "expected_borrow_rate": "600000000000000000000000000",
+      "expected_liquidity_rate": "486000000000000000000000000"
+    },
+    "near_full_utilization": {
+      "available_liquidity": "1",
+      "total_debt": "999",
+      "reserve_factor_bps": "1000",
+      "expected_utilization": "999000000000000000000000000",
+      "expected_borrow_rate": "1095000000000000000000000000",
+      "expected_liquidity_rate": "984514500000000000000000000"
+    },
+    "full_utilization": {
+      "available_liquidity": "0",
+      "total_debt": "100000000000",
+      "reserve_factor_bps": "1000",
+      "expected_utilization": "1000000000000000000000000000",
+      "expected_borrow_rate": "1100000000000000000000000000",
+      "expected_liquidity_rate": "990000000000000000000000000"
+    }
+  },
+  "interest_index": {
+    "one_second": {
+      "elapsed_seconds": "1",
+      "expected_borrow_index": "1000000003170979198376458650",
+      "expected_liquidity_index": "1000000002283105022831050228"
+    },
+    "one_minute": {
+      "elapsed_seconds": "60",
+      "expected_borrow_index": "1000000190258751902587519025",
+      "expected_liquidity_index": "1000000136986301369863013698"
+    },
+    "one_day": {
+      "elapsed_seconds": "86400",
+      "expected_borrow_index": "1000273972602739726027397260",
+      "expected_liquidity_index": "1000197260273972602739726027"
+    },
+    "thirty_days": {
+      "elapsed_seconds": "2592000",
+      "expected_borrow_index": "1008219178082191780821917808",
+      "expected_liquidity_index": "1005917808219178082191780821"
+    },
+    "one_year": {
+      "elapsed_seconds": "31536000",
+      "expected_borrow_index": "1100000000000000000000000000",
+      "expected_liquidity_index": "1072000000000000000000000000"
+    }
+  },
+  "liquidation": {
+    "partial_with_bonus": {
+      "collateral_amount": "10000000000000000000",
+      "debt_amount": "20000000000",
+      "liquidation_weth_price": "200000000000",
+      "requested_repay": "5000000000",
+      "expected_repaid": "5000000000",
+      "expected_collateral_seized": "2625000000000000000",
+      "expected_remaining_debt": "15000000000",
+      "expected_remaining_collateral": "7375000000000000000",
+      "expected_bad_debt": "0"
+    },
+    "close_factor_cap": {
+      "collateral_amount": "10000000000000000000",
+      "debt_amount": "20000000000",
+      "liquidation_weth_price": "150000000000",
+      "requested_repay": "20000000000",
+      "expected_repaid": "10000000000",
+      "expected_collateral_seized": "7000000000000000000",
+      "expected_remaining_debt": "10000000000",
+      "expected_remaining_collateral": "3000000000000000000",
+      "expected_bad_debt": "0"
+    },
+    "collateral_exhaustion": {
+      "collateral_amount": "10000000000000000000",
+      "debt_amount": "10000000000",
+      "liquidation_weth_price": "10000000000",
+      "requested_repay": "10000000000",
+      "expected_repaid": "952380952",
+      "expected_collateral_seized": "10000000000000000000",
+      "expected_remaining_debt": "0",
+      "expected_remaining_collateral": "0",
+      "expected_bad_debt": "9047619048"
     }
   }
 }

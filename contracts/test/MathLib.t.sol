@@ -45,6 +45,7 @@ contract MathLibTest {
 
     function testScales() public pure {
         assert(MathLib.WAD == 1e18);
+        assert(MathLib.RAY == 1e27);
         assert(MathLib.BPS == 10_000);
         assert(MathLib.ORACLE_PRICE_SCALE == 1e8);
     }

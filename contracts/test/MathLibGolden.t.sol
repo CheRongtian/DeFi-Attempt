@@ -29,6 +29,7 @@ contract MathLibGoldenTest {
 
     function testGoldenScales() public view {
         _assertEq(_uint(".units.wad"), MathLib.WAD, "WAD scale");
+        _assertEq(_uint(".units.ray"), MathLib.RAY, "RAY scale");
         _assertEq(_uint(".units.bps"), MathLib.BPS, "BPS scale");
         _assertEq(_uint(".units.oracle_price_scale"), MathLib.ORACLE_PRICE_SCALE, "Oracle price scale");
     }

@@ -13,20 +13,33 @@ DeFi/
 │   ├── lib/
 │   │   └── openzeppelin-contracts/
 │   ├── src/
+│   │   ├── InterestRateModel.sol
 │   │   ├── LendingPool.sol
 │   │   ├── LiquidationManager.sol
 │   │   ├── PriceOracle.sol
 │   │   ├── RiskManager.sol
+│   │   ├── interfaces/
+│   │   │   └── IIndexProvider.sol
 │   │   ├── libraries/
 │   │   │   └── MathLib.sol
-│   │   └── mocks/
-│   │       ├── MockUSDC.sol
-│   │       └── MockWETH.sol
+│   │   ├── mocks/
+│   │   │   ├── MockUSDC.sol
+│   │   │   └── MockWETH.sol
+│   │   └── tokens/
+│   │       ├── DebtToken.sol
+│   │       └── DepositToken.sol
 │   └── test/
+│       ├── DebtToken.t.sol
+│       ├── DepositToken.t.sol
+│       ├── InterestAccounting.t.sol
+│       ├── InterestFuzz.t.sol
+│       ├── InterestGolden.t.sol
+│       ├── InterestRateModel.t.sol
 │       ├── LendingPool.t.sol
 │       ├── LendingPoolIntegration.t.sol
 │       ├── LendingMvpFuzz.t.sol
 │       ├── LendingMvpInvariant.t.sol
+│       ├── LiquidationGolden.t.sol
 │       ├── LiquidationManager.t.sol
 │       ├── MathLibGolden.t.sol
 │       ├── MathLib.t.sol
@@ -158,7 +171,7 @@ contracts/test/PriceOracle.t.sol
 
 ### Fixed-Point Math
 
-Shared WAD and BPS math with full-precision multiplication and division, explicit rounding, and USD valuation for 6- and 18-decimal tokens.
+Shared WAD, RAY, and BPS math with full-precision multiplication and division, explicit rounding, and USD valuation for 6- and 18-decimal tokens.
 
 Golden vectors provide reusable expected results for Solidity and future off-chain implementations.
 
@@ -184,7 +197,7 @@ contracts/test/RiskManager.t.sol
 
 ### Lending Pool
 
-Supports USDC liquidity supply, WETH collateral, USDC borrowing and repayment, and safe withdrawals. The pool enforces available liquidity, borrowing capacity, health factor, minimum debt, and stale-price rules.
+Supports USDC liquidity supply, WETH collateral, USDC borrowing and repayment, and safe withdrawals. The pool enforces available liquidity, borrowing capacity, health factor, minimum debt, and stale-price rules while maintaining indexed supply, debt, and reserve accounting.
 
 An integration test covers the complete supply, borrow, repay, and collateral withdrawal lifecycle.
 
@@ -194,6 +207,30 @@ Files:
 contracts/src/LendingPool.sol
 contracts/test/LendingPool.t.sol
 contracts/test/LendingPoolIntegration.t.sol
+```
+
+### Interest and Indexed Positions
+
+USDC deposits and debts are represented by non-transferable, pool-controlled scaled tokens. Interest is accrued lazily before market state changes through borrow and liquidity indices.
+
+The kinked rate model uses an 80% optimal utilization rate, a 2% base rate, an 8% first slope, a 100% second slope, and a 10% reserve factor. Supplier interest is capped at the borrower interest available for distribution so integer rounding cannot break the pool's accounting identity.
+
+Golden vectors, fuzz tests, stateful invariants, and a rounding-boundary regression test cover rates, indices, reserves, and interest-bearing operations.
+
+Files:
+
+```text
+contracts/src/InterestRateModel.sol
+contracts/src/interfaces/IIndexProvider.sol
+contracts/src/tokens/DepositToken.sol
+contracts/src/tokens/DebtToken.sol
+contracts/test/DepositToken.t.sol
+contracts/test/DebtToken.t.sol
+contracts/test/InterestRateModel.t.sol
+contracts/test/InterestAccounting.t.sol
+contracts/test/InterestFuzz.t.sol
+contracts/test/InterestGolden.t.sol
+contracts/test/LendingMvpInvariant.t.sol
 ```
 
 ### Liquidation and Bad Debt

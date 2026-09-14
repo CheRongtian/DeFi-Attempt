@@ -7,6 +7,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 /// @notice Explicit rounding and USD valuation for the MVP's 6- and 18-decimal tokens.
 library MathLib {
     uint256 internal constant WAD = 1e18;
+    uint256 internal constant RAY = 1e27;
     uint256 internal constant BPS = 1e4;
     uint256 internal constant ORACLE_PRICE_SCALE = 1e8;
 

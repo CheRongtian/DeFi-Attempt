@@ -105,7 +105,8 @@ contract LendingMvpFuzzTest {
 
     function _assertAccountingIdentity() private view {
         assert(
-            pool.availableUsdcLiquidity() + pool.totalPerformingUsdcDebt() + pool.badDebt() == pool.totalUsdcSupplies()
+            pool.availableUsdcLiquidity() + pool.totalPerformingUsdcDebt() + pool.badDebt()
+                == pool.totalUsdcSupplies() + pool.protocolReserve()
         );
         assert(usdc.balanceOf(address(pool)) == pool.availableUsdcLiquidity());
         assert(weth.balanceOf(address(pool)) == pool.totalWethCollateral());

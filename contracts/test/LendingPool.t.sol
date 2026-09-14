@@ -246,10 +246,13 @@ contract LendingPoolTest {
         _openPosition(50_000e6, 10e18, 10_000e6);
         VM.warp(START_TIME + MAX_PRICE_AGE + 1);
 
-        _repay(10_000e6);
+        uint256 accruedDebt = pool.usdcDebt(ALICE);
+        assert(accruedDebt > 10_000e6);
+        usdc.mint(ALICE, accruedDebt - 10_000e6);
+        _repay(type(uint256).max);
 
         assert(pool.usdcDebt(ALICE) == 0);
-        assert(pool.availableUsdcLiquidity() == 50_000e6);
+        assert(pool.availableUsdcLiquidity() == 40_000e6 + accruedDebt);
     }
 
     function testRepayCannotLeaveDustDebt() public {

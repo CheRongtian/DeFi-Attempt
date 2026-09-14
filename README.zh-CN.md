@@ -13,20 +13,33 @@ DeFi/
 │   ├── lib/
 │   │   └── openzeppelin-contracts/
 │   ├── src/
+│   │   ├── InterestRateModel.sol
 │   │   ├── LendingPool.sol
 │   │   ├── LiquidationManager.sol
 │   │   ├── PriceOracle.sol
 │   │   ├── RiskManager.sol
+│   │   ├── interfaces/
+│   │   │   └── IIndexProvider.sol
 │   │   ├── libraries/
 │   │   │   └── MathLib.sol
-│   │   └── mocks/
-│   │       ├── MockUSDC.sol
-│   │       └── MockWETH.sol
+│   │   ├── mocks/
+│   │   │   ├── MockUSDC.sol
+│   │   │   └── MockWETH.sol
+│   │   └── tokens/
+│   │       ├── DebtToken.sol
+│   │       └── DepositToken.sol
 │   └── test/
+│       ├── DebtToken.t.sol
+│       ├── DepositToken.t.sol
+│       ├── InterestAccounting.t.sol
+│       ├── InterestFuzz.t.sol
+│       ├── InterestGolden.t.sol
+│       ├── InterestRateModel.t.sol
 │       ├── LendingPool.t.sol
 │       ├── LendingPoolIntegration.t.sol
 │       ├── LendingMvpFuzz.t.sol
 │       ├── LendingMvpInvariant.t.sol
+│       ├── LiquidationGolden.t.sol
 │       ├── LiquidationManager.t.sol
 │       ├── MathLibGolden.t.sol
 │       ├── MathLib.t.sol
@@ -158,7 +171,7 @@ contracts/test/PriceOracle.t.sol
 
 ### 定点数计算
 
-提供统一的 WAD 和 BPS 数学工具，包括高精度乘除、明确的舍入方向，以及 6 位和 18 位代币的 USD 价值换算。
+提供统一的 WAD、RAY 和 BPS 数学工具，包括高精度乘除、明确的舍入方向，以及 6 位和 18 位代币的 USD 价值换算。
 
 Golden vectors 保存可复用的预期结果，供 Solidity 和未来的链下实现共同验证。
 
@@ -184,7 +197,7 @@ contracts/test/RiskManager.t.sol
 
 ### 借贷池
 
-支持 USDC 流动性供应、WETH 抵押、USDC 借款与还款，以及安全提款。借贷池会检查可用流动性、借款额度、健康因子、最低债务和价格有效期。
+支持 USDC 流动性供应、WETH 抵押、USDC 借款与还款，以及安全提款。借贷池会检查可用流动性、借款额度、健康因子、最低债务和价格有效期，并维护指数化存款、债务和协议储备账目。
 
 集成测试覆盖完整的供应、借款、还款和抵押物提款闭环。
 
@@ -194,6 +207,30 @@ contracts/test/RiskManager.t.sol
 contracts/src/LendingPool.sol
 contracts/test/LendingPool.t.sol
 contracts/test/LendingPoolIntegration.t.sol
+```
+
+### 利率与指数化凭证
+
+USDC 存款和债务使用不可转让、仅由借贷池控制的缩放凭证表示。借贷池在市场状态变化前，通过借款指数与流动性指数惰性计息。
+
+分段利率模型采用 80% 最优资金利用率、2% 基础利率、8% 第一段斜率、100% 第二段斜率，以及 10% 协议储备因子。存款利息以实际可分配的借款利息为上限，避免整数舍入破坏借贷池的会计恒等式。
+
+Golden Vector、Fuzz 测试、Stateful Invariant 和舍入边界回归测试覆盖利率、指数、协议储备和计息操作。
+
+文件：
+
+```text
+contracts/src/InterestRateModel.sol
+contracts/src/interfaces/IIndexProvider.sol
+contracts/src/tokens/DepositToken.sol
+contracts/src/tokens/DebtToken.sol
+contracts/test/DepositToken.t.sol
+contracts/test/DebtToken.t.sol
+contracts/test/InterestRateModel.t.sol
+contracts/test/InterestAccounting.t.sol
+contracts/test/InterestFuzz.t.sol
+contracts/test/InterestGolden.t.sol
+contracts/test/LendingMvpInvariant.t.sol
 ```
 
 ### 清算与坏账
