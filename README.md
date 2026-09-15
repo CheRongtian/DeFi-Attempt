@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md)
 
-A Solidity-based overcollateralized lending protocol with a modern C++17 Ethereum common layer and a C++20 reorg-aware indexer backed by PostgreSQL. Foundry is used for smart contracts, while CMake and CTest build and verify the C++ components.
+A Solidity-based overcollateralized lending protocol with C++ services for Ethereum RPC, reorg-aware indexing, risk scanning, transaction management, automated liquidation, and a PostgreSQL-backed REST API. Foundry is used for smart contracts, while CMake and CTest build and verify the C++ components.
 
 ## Project Structure
 
@@ -81,11 +81,27 @@ DeFi/
 │   │   │   ├── Uint256Tests.cpp
 │   │   │   └── Uint256MathTests.cpp
 │   │   └── CMakeLists.txt
-│   └── indexer/
-│       ├── include/dlp/indexer/
+│   ├── indexer/
+│   │   ├── include/dlp/indexer/
+│   │   ├── src/
+│   │   ├── tests/
+│   │   └── CMakeLists.txt
+│   ├── risk-engine/
+│   │   ├── include/dlp/risk/
+│   │   ├── src/
+│   │   └── tests/
+│   ├── tx-manager/
+│   │   ├── include/dlp/tx/
+│   │   ├── src/
+│   │   └── tests/
+│   ├── liquidator/
+│   │   ├── include/dlp/liquidator/
+│   │   ├── src/
+│   │   └── tests/
+│   └── api-server/
+│       ├── include/dlp/api/
 │       ├── src/
-│       ├── tests/
-│       └── CMakeLists.txt
+│       └── tests/
 ├── database/
 │   └── migrations/
 │       ├── 001_create_blocks.sql
@@ -93,8 +109,10 @@ DeFi/
 │       ├── 003_create_sync_state.sql
 │       ├── 004_create_positions.sql
 │       ├── 005_create_markets.sql
-│       └── 006_create_liquidations.sql
+│       ├── 006_create_liquidations.sql
+│       └── 007_create_tx_jobs.sql
 ├── scripts/
+│   ├── create-liquidation-scenario.sh
 │   ├── deploy-local.sh
 │   └── run-local.sh
 ├── tests/
@@ -222,13 +240,31 @@ ctest --test-dir build --output-on-failure \
 
 ## Run Locally
 
-After building the C++ targets, start PostgreSQL, Anvil, deploy the contracts, and run the Indexer with one command:
+After building the C++ targets, start PostgreSQL, Anvil, deploy the contracts, and run the Indexer, Liquidator, and API Server with one command:
 
 ```bash
 ./scripts/run-local.sh
 ```
 
-The local runner uses PostgreSQL port `5433` and Anvil port `8546` by default. Contract addresses are written to the ignored `.env.local` file. Press `Ctrl+C` to stop the Indexer and the Anvil process started by the script; PostgreSQL data remains available in its Docker volume.
+The local runner uses PostgreSQL port `5433`, Anvil port `8546`, and API port `8081` by default. Contract addresses are written to the ignored `.env.local` file. When the current RPC and deployed contracts can be reused, their indexed database state is preserved. A new chain deployment automatically removes the old PostgreSQL volume so stale indexed state and transaction nonces cannot leak into the new chain.
+
+To force removal of the local PostgreSQL volume before startup:
+
+```bash
+./scripts/run-local.sh --clean
+```
+
+Keep the runner open and create a complete liquidation scenario from another terminal:
+
+```bash
+./scripts/create-liquidation-scenario.sh
+
+curl -sS http://127.0.0.1:8081/markets
+curl -sS http://127.0.0.1:8081/liquidations
+curl -sS http://127.0.0.1:8081/protocol/stats
+```
+
+After the Indexer catches up, the scenario produces five partial liquidations, exhausts the borrower's collateral, and records the remaining debt as bad debt. Press `Ctrl+C` to stop the C++ services and the Anvil process started by the runner. The PostgreSQL container remains available until the next reset.
 
 ## Implemented Features
 
@@ -390,4 +426,49 @@ database/migrations/
 cpp/indexer/
 scripts/deploy-local.sh
 scripts/run-local.sh
+```
+
+### C++ Risk Engine
+
+The Risk Engine reads indexed PostgreSQL positions and market state, reproduces the Solidity collateral, debt, health-factor, and liquidation calculations with checked integer arithmetic, and scans large position sets for actionable candidates.
+
+Files:
+
+```text
+cpp/risk-engine/
+tests/golden/risk_vectors.json
+```
+
+### Transaction Manager and Liquidator
+
+The persistent Transaction Manager signs EIP-1559 transactions, allocates nonces from RPC and PostgreSQL state, tracks submission and receipts, replaces stale transactions, and records finality or reorgs. The single-instance Liquidator revalidates candidates against the latest chain state, checks profitability, and submits capped liquidations through the manager.
+
+Files:
+
+```text
+cpp/tx-manager/
+cpp/liquidator/
+database/migrations/007_create_tx_jobs.sql
+scripts/create-liquidation-scenario.sh
+```
+
+### REST API
+
+The Boost.Beast API Server exposes markets, positions, health factors, liquidation history, protocol statistics, and deterministic risk simulation. Read responses include the indexed block, observed chain head, and index lag.
+
+Endpoints:
+
+```text
+GET  /markets
+GET  /positions/:address
+GET  /positions/:address/health
+GET  /liquidations
+GET  /protocol/stats
+POST /risk/simulate
+```
+
+Files:
+
+```text
+cpp/api-server/
 ```

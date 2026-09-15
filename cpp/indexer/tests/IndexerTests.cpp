@@ -22,7 +22,13 @@ ethereum::BlockHeader Block(
     const ethereum::Hash256& parentHash
 )
 {
-    return ethereum::BlockHeader{ethereum::Uint256{number}, hash, parentHash};
+    return ethereum::BlockHeader{
+        ethereum::Uint256{number},
+        hash,
+        parentHash,
+        ethereum::Uint256{},
+        std::nullopt
+    };
 }
 
 class FakeChain final : public ChainClient

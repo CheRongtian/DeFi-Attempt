@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-一个使用 Solidity 开发的超额抵押借贷协议，包含现代 C++17 Ethereum 公共层，以及由 PostgreSQL 提供存储的 C++20 Reorg-aware Indexer。智能合约使用 Foundry，C++ 组件使用 CMake 和 CTest 编译与验证。
+一个使用 Solidity 开发的超额抵押借贷协议，包含 Ethereum RPC、Reorg-aware Indexer、风险扫描、交易管理、自动清算，以及由 PostgreSQL 提供数据的 REST API 等 C++ 服务。智能合约使用 Foundry，C++ 组件使用 CMake 和 CTest 编译与验证。
 
 ## 项目结构
 
@@ -81,11 +81,27 @@ DeFi/
 │   │   │   ├── Uint256Tests.cpp
 │   │   │   └── Uint256MathTests.cpp
 │   │   └── CMakeLists.txt
-│   └── indexer/
-│       ├── include/dlp/indexer/
+│   ├── indexer/
+│   │   ├── include/dlp/indexer/
+│   │   ├── src/
+│   │   ├── tests/
+│   │   └── CMakeLists.txt
+│   ├── risk-engine/
+│   │   ├── include/dlp/risk/
+│   │   ├── src/
+│   │   └── tests/
+│   ├── tx-manager/
+│   │   ├── include/dlp/tx/
+│   │   ├── src/
+│   │   └── tests/
+│   ├── liquidator/
+│   │   ├── include/dlp/liquidator/
+│   │   ├── src/
+│   │   └── tests/
+│   └── api-server/
+│       ├── include/dlp/api/
 │       ├── src/
-│       ├── tests/
-│       └── CMakeLists.txt
+│       └── tests/
 ├── database/
 │   └── migrations/
 │       ├── 001_create_blocks.sql
@@ -93,8 +109,10 @@ DeFi/
 │       ├── 003_create_sync_state.sql
 │       ├── 004_create_positions.sql
 │       ├── 005_create_markets.sql
-│       └── 006_create_liquidations.sql
+│       ├── 006_create_liquidations.sql
+│       └── 007_create_tx_jobs.sql
 ├── scripts/
+│   ├── create-liquidation-scenario.sh
 │   ├── deploy-local.sh
 │   └── run-local.sh
 ├── tests/
@@ -222,13 +240,31 @@ ctest --test-dir build --output-on-failure \
 
 ## 本地运行
 
-完成 C++ 编译后，通过一条命令启动 PostgreSQL、Anvil、部署合约并运行 Indexer：
+完成 C++ 编译后，通过一条命令启动 PostgreSQL、Anvil、部署合约，并运行 Indexer、Liquidator 和 API Server：
 
 ```bash
 ./scripts/run-local.sh
 ```
 
-本地脚本默认使用 PostgreSQL `5433` 端口和 Anvil `8546` 端口，合约地址写入已被忽略的 `.env.local`。按 `Ctrl+C` 会停止 Indexer 和由脚本启动的 Anvil，PostgreSQL 数据继续保存在 Docker volume 中。
+本地脚本默认使用 PostgreSQL `5433`、Anvil `8546` 和 API `8081` 端口，合约地址写入已被忽略的 `.env.local`。当前 RPC 和已部署合约可以复用时，脚本会保留对应的索引数据；需要部署新链时，脚本会自动删除旧 PostgreSQL volume，避免旧索引状态和交易 nonce 混入新链。
+
+如需在启动前强制删除本地 PostgreSQL volume：
+
+```bash
+./scripts/run-local.sh --clean
+```
+
+保持启动脚本运行，并在另一个终端创建完整清算场景：
+
+```bash
+./scripts/create-liquidation-scenario.sh
+
+curl -sS http://127.0.0.1:8081/markets
+curl -sS http://127.0.0.1:8081/liquidations
+curl -sS http://127.0.0.1:8081/protocol/stats
+```
+
+Indexer 追上链头后，该场景会产生五次部分清算、耗尽借款人的抵押物，并将剩余债务记录为坏账。按 `Ctrl+C` 会停止 C++ 服务及脚本启动的 Anvil；PostgreSQL 容器会保留到下一次重置。
 
 ## 已实现功能
 
@@ -390,4 +426,49 @@ database/migrations/
 cpp/indexer/
 scripts/deploy-local.sh
 scripts/run-local.sh
+```
+
+### C++ 风险引擎
+
+Risk Engine 从 PostgreSQL 读取已索引的仓位和市场状态，通过带检查的整数计算复现 Solidity 的抵押价值、债务价值、健康因子和清算计算，并批量扫描可执行的清算候选仓位。
+
+文件：
+
+```text
+cpp/risk-engine/
+tests/golden/risk_vectors.json
+```
+
+### 交易管理与自动清算
+
+持久化 Tx Manager 负责签名 EIP-1559 交易、结合 RPC 与 PostgreSQL 状态分配 nonce、跟踪提交和 receipt、替换停滞交易，并记录最终确认或 Reorg。单实例 Liquidator 会使用最新链上状态重新验证候选仓位、检查收益，并通过 Tx Manager 提交受限清算交易。
+
+文件：
+
+```text
+cpp/tx-manager/
+cpp/liquidator/
+database/migrations/007_create_tx_jobs.sql
+scripts/create-liquidation-scenario.sh
+```
+
+### REST API
+
+基于 Boost.Beast 的 API Server 提供市场、仓位、健康因子、清算历史、协议统计和确定性风险模拟接口。读取响应包含已索引区块、当前链头和索引延迟。
+
+接口：
+
+```text
+GET  /markets
+GET  /positions/:address
+GET  /positions/:address/health
+GET  /liquidations
+GET  /protocol/stats
+POST /risk/simulate
+```
+
+文件：
+
+```text
+cpp/api-server/
 ```

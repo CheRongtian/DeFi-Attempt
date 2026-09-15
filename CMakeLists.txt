@@ -10,3 +10,7 @@ include(CTest)
 
 add_subdirectory(cpp/common)
 add_subdirectory(cpp/indexer)
+add_subdirectory(cpp/risk-engine)
+add_subdirectory(cpp/tx-manager)
+add_subdirectory(cpp/liquidator)
+add_subdirectory(cpp/api-server)

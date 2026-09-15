@@ -148,6 +148,42 @@ struct ParsedEndpoint
     return Hex::Encode(hash);
 }
 
+[[nodiscard]] Json EncodeCall(const TransactionCall& call)
+{
+    Json result{{"to", call.to.ToHex()}, {"data", Hex::Encode(call.data)}};
+    if(call.from.has_value())
+    {
+        result["from"] = call.from->ToHex();
+    }
+    if(!call.value.IsZero())
+    {
+        result["value"] = call.value.ToQuantity();
+    }
+    return result;
+}
+
+[[nodiscard]] Bytes ParseBytesResult(const Json& result, std::string_view method)
+{
+    if(!result.is_string())
+    {
+        throw RpcException(
+            RpcErrorKind::InvalidResponse,
+            std::string{method} + " result is not a hex string"
+        );
+    }
+    try
+    {
+        return Hex::Decode(result.get_ref<const std::string&>());
+    }
+    catch(const std::exception& exception)
+    {
+        throw RpcException(
+            RpcErrorKind::InvalidResponse,
+            std::string{method} + " returned invalid hex data: " + exception.what()
+        );
+    }
+}
+
 }
 
 class RpcClient::Impl final
@@ -219,9 +255,8 @@ public:
             }
             if(const auto error = decoded.find("error"); error != decoded.end() && !error->is_null())
             {
-                const auto code = error->value("code", std::int64_t{0});
                 const auto message = error->value("message", std::string{"unknown RPC error"});
-                throw RpcException(RpcErrorKind::Remote, message, code);
+                throw RpcException(RpcErrorKind::Remote, message);
             }
             if(!decoded.contains("result"))
             {
@@ -250,19 +285,14 @@ private:
     mutable std::atomic<std::uint64_t> nextRequestId_{1};
 };
 
-RpcException::RpcException(RpcErrorKind kind, std::string message, std::optional<std::int64_t> remoteCode)
-    : std::runtime_error(std::move(message)), kind_(kind), remoteCode_(remoteCode)
+RpcException::RpcException(RpcErrorKind kind, std::string message)
+    : std::runtime_error(std::move(message)), kind_(kind)
 {
 }
 
 RpcErrorKind RpcException::GetKind() const noexcept
 {
     return kind_;
-}
-
-const std::optional<std::int64_t>& RpcException::GetRemoteCode() const noexcept
-{
-    return remoteCode_;
 }
 
 RpcClient::RpcClient(std::string endpoint, std::chrono::milliseconds timeout)
@@ -305,7 +335,11 @@ std::optional<BlockHeader> RpcClient::GetBlockByNumber(const Uint256& number) co
     return BlockHeader{
         ParseQuantity(result, "number"),
         ParseHash(result, "hash"),
-        ParseHash(result, "parentHash")
+        ParseHash(result, "parentHash"),
+        ParseQuantity(result, "timestamp"),
+        result.contains("baseFeePerGas") && !result["baseFeePerGas"].is_null()
+            ? std::optional<Uint256>{ParseQuantity(result, "baseFeePerGas")}
+            : std::nullopt
     };
 }
 
@@ -400,6 +434,72 @@ std::vector<RpcLog> RpcClient::GetLogs(const LogFilter& filter) const
     }
 
     return logs;
+}
+
+Bytes RpcClient::EthCall(const TransactionCall& call, std::string_view block) const
+{
+    const auto result = implementation_->Call(
+        "eth_call",
+        Json::array({EncodeCall(call), std::string{block}})
+    );
+    return ParseBytesResult(result, "eth_call");
+}
+
+Uint256 RpcClient::EstimateGas(const TransactionCall& call) const
+{
+    const auto result = implementation_->Call("eth_estimateGas", Json::array({EncodeCall(call)}));
+    return ParseQuantity(Json{{"result", result}}, "result");
+}
+
+Uint256 RpcClient::GetTransactionCount(const Address& address, std::string_view block) const
+{
+    const auto result = implementation_->Call(
+        "eth_getTransactionCount",
+        Json::array({address.ToHex(), std::string{block}})
+    );
+    return ParseQuantity(Json{{"result", result}}, "result");
+}
+
+Uint256 RpcClient::GetMaxPriorityFeePerGas() const
+{
+    const auto result = implementation_->Call("eth_maxPriorityFeePerGas", Json::array());
+    return ParseQuantity(Json{{"result", result}}, "result");
+}
+
+Hash256 RpcClient::SendRawTransaction(const Bytes& rawTransaction) const
+{
+    const auto result = implementation_->Call(
+        "eth_sendRawTransaction",
+        Json::array({Hex::Encode(rawTransaction)})
+    );
+    return ParseHash(Json{{"result", result}}, "result");
+}
+
+std::optional<TransactionReceipt> RpcClient::GetTransactionReceipt(
+    const Hash256& transactionHash
+) const
+{
+    const auto result = implementation_->Call(
+        "eth_getTransactionReceipt",
+        Json::array({HashToHex(transactionHash)})
+    );
+    if(result.is_null())
+    {
+        return std::nullopt;
+    }
+    if(!result.is_object())
+    {
+        throw RpcException(RpcErrorKind::InvalidResponse, "eth_getTransactionReceipt result is not an object");
+    }
+
+    return TransactionReceipt{
+        ParseHash(result, "transactionHash"),
+        ParseQuantity(result, "blockNumber"),
+        ParseHash(result, "blockHash"),
+        !ParseQuantity(result, "status").IsZero(),
+        ParseQuantity(result, "gasUsed"),
+        ParseQuantity(result, "effectiveGasPrice")
+    };
 }
 
 }

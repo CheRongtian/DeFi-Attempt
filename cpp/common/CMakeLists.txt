@@ -29,6 +29,8 @@ FetchContent_MakeAvailable(ethash)
 
 find_package(Boost 1.74 REQUIRED COMPONENTS system)
 find_package(nlohmann_json 3.10 REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SECP256K1 REQUIRED IMPORTED_TARGET libsecp256k1)
 
 add_library(
     dlp_ethereum_common
@@ -38,7 +40,9 @@ add_library(
     src/Hex.cpp
     src/Keccak.cpp
     src/ProtocolAbi.cpp
+    src/Rlp.cpp
     src/RpcClient.cpp
+    src/Transaction.cpp
     src/Uint256.cpp
     src/Uint256Math.cpp
 )
@@ -56,6 +60,7 @@ target_link_libraries(
         Boost::system
         ethash::keccak
         nlohmann_json::nlohmann_json
+        PkgConfig::SECP256K1
 )
 
 target_compile_definitions(dlp_ethereum_common PUBLIC BOOST_ASIO_NO_DEPRECATED)
@@ -86,7 +91,9 @@ if(BUILD_TESTING)
         tests/HexTests.cpp
         tests/KeccakTests.cpp
         tests/ProtocolAbiTests.cpp
+        tests/RlpTests.cpp
         tests/RpcClientIntegrationTests.cpp
+        tests/TransactionTests.cpp
         tests/Uint256Tests.cpp
         tests/Uint256MathTests.cpp
     )
