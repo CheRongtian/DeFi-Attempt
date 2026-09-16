@@ -86,9 +86,11 @@ MarketSnapshot PostgresRiskRepository::LoadMarket(const ethereum::Uint256& chain
                 m.usdc_price_updated_at,
                 m.usdc_max_price_age,
                 s.block_number,
-                s.block_hash
+                s.block_hash,
+                v.canonical_version
             FROM markets m
             JOIN sync_state s ON s.chain_id = m.chain_id
+            JOIN chain_versions v ON v.chain_id = m.chain_id
             WHERE m.chain_id = $1
         )SQL",
         pqxx::params{chainId.ToDecimal()}
@@ -117,7 +119,8 @@ MarketSnapshot PostgresRiskRepository::LoadMarket(const ethereum::Uint256& chain
         0,
         ethereum::Uint256::FromDecimal(row["available_usdc_liquidity"].as<std::string>()),
         ethereum::Uint256::FromDecimal(row["total_scaled_usdc_debt"].as<std::string>()),
-        ethereum::Uint256::FromDecimal(row["last_interest_timestamp"].as<std::string>())
+        ethereum::Uint256::FromDecimal(row["last_interest_timestamp"].as<std::string>()),
+        row["canonical_version"].as<std::uint64_t>()
     };
 }
 

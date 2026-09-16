@@ -104,7 +104,8 @@ risk::MarketSnapshot RpcLiquidationChain::LoadMarket() const
         block->timestamp.ToUint64(),
         ethereum::Uint256{},
         ethereum::Uint256{},
-        ethereum::Uint256{}
+        ethereum::Uint256{},
+        0
     };
 }
 

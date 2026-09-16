@@ -72,6 +72,66 @@ using ethereum::Uint256;
     };
 }
 
+[[nodiscard]] std::uint64_t AdvanceCanonicalVersion(
+    pqxx::transaction_base& transaction,
+    std::string_view chain
+)
+{
+    const auto rows = transaction.exec(
+        R"SQL(
+            INSERT INTO chain_versions (chain_id, canonical_version)
+            VALUES ($1, 1)
+            ON CONFLICT (chain_id)
+            DO UPDATE SET canonical_version = chain_versions.canonical_version + 1,
+                          updated_at = NOW()
+            RETURNING canonical_version
+        )SQL",
+        pqxx::params{chain}
+    );
+    return rows.front()["canonical_version"].as<std::uint64_t>();
+}
+
+void InsertOutboxEvent(
+    pqxx::transaction_base& transaction,
+    std::string eventId,
+    std::string_view eventType,
+    std::string aggregateId,
+    std::string_view chain,
+    std::uint64_t blockNumber,
+    const Hash256& blockHash,
+    std::uint64_t canonicalVersion,
+    const nlohmann::json& payload
+)
+{
+    transaction.exec(
+        R"SQL(
+            INSERT INTO outbox_events
+            (
+                event_id,
+                event_type,
+                aggregate_id,
+                chain_id,
+                block_number,
+                block_hash,
+                canonical_version,
+                payload
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+            ON CONFLICT (event_id) DO NOTHING
+        )SQL",
+        pqxx::params{
+            std::move(eventId),
+            eventType,
+            std::move(aggregateId),
+            chain,
+            blockNumber,
+            Hex::Encode(blockHash),
+            canonicalVersion,
+            payload.dump()
+        }
+    );
+}
+
 void ReplaceDerivedState(
     pqxx::transaction_base& transaction,
     const Uint256& chainId,
@@ -509,6 +569,7 @@ void PostgresStore::CommitBlock(
     }
 
     ReplaceDerivedState(transaction, block.chainId, state);
+    const auto canonicalVersion = AdvanceCanonicalVersion(transaction, chain);
     transaction.exec(
         R"SQL(
             INSERT INTO sync_state (chain_id, block_number, block_hash)
@@ -519,6 +580,17 @@ void PostgresStore::CommitBlock(
                           updated_at = NOW()
         )SQL",
         pqxx::params{chain, block.number, Hex::Encode(block.hash)}
+    );
+    InsertOutboxEvent(
+        transaction,
+        "chain.block.processed:" + chain + ":" + Hex::Encode(block.hash, false),
+        "chain.block.processed",
+        "chain:" + chain,
+        chain,
+        block.number,
+        block.hash,
+        canonicalVersion,
+        {{"parentHash", Hex::Encode(block.parentHash)}}
     );
     transaction.commit();
 }
@@ -532,6 +604,7 @@ void PostgresStore::RewindTo(
     auto connection = implementation_->Connect();
     pqxx::work transaction{connection};
     const auto chain = chainId.ToDecimal();
+    const auto canonicalVersion = AdvanceCanonicalVersion(transaction, chain);
 
     if(ancestor.has_value())
     {
@@ -575,6 +648,24 @@ void PostgresStore::RewindTo(
     {
         transaction.exec("DELETE FROM sync_state WHERE chain_id = $1", pqxx::params{chain});
     }
+    const auto ancestorNumber = ancestor.has_value() ? ancestor->number : 0;
+    const auto ancestorHash = ancestor.has_value() ? ancestor->hash : Hash256{};
+    InsertOutboxEvent(
+        transaction,
+        "chain.reorg:" + chain + ":" + std::to_string(canonicalVersion),
+        "chain.reorg",
+        "chain:" + chain,
+        chain,
+        ancestorNumber,
+        ancestorHash,
+        canonicalVersion,
+        {
+            {"ancestorBlockNumber", ancestorNumber},
+            {"ancestorBlockHash", ancestor.has_value()
+                ? nlohmann::json{Hex::Encode(ancestor->hash)}
+                : nlohmann::json{nullptr}}
+        }
+    );
     transaction.commit();
 }
 

@@ -1,8 +1,8 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <cstdint>
 #include <cstdlib>
-#include <ctime>
 #include <exception>
 #include <iostream>
 #include <stdexcept>
@@ -12,9 +12,9 @@
 #include "dlp/ethereum/Address.hpp"
 #include "dlp/ethereum/Transaction.hpp"
 #include "dlp/liquidator/LiquidationChain.hpp"
+#include "dlp/liquidator/LiquidationJobs.hpp"
 #include "dlp/liquidator/Liquidator.hpp"
-#include "dlp/risk/PostgresRiskRepository.hpp"
-#include "dlp/risk/RiskEngine.hpp"
+#include "dlp/messaging/JetStream.hpp"
 #include "dlp/tx/PostgresTransactionStore.hpp"
 #include "dlp/tx/TransactionRpc.hpp"
 #include "dlp/tx/TxManager.hpp"
@@ -47,14 +47,7 @@ void Stop(int)
 
 [[nodiscard]] std::uint64_t UnsignedEnvironment(const char* name, const char* fallback)
 {
-    const auto value = EnvironmentOrDefault(name, fallback);
-    std::size_t parsed = 0;
-    const auto result = std::stoull(value, &parsed);
-    if(parsed != value.size())
-    {
-        throw std::invalid_argument(std::string{name} + " must be an unsigned integer");
-    }
-    return result;
+    return std::stoull(EnvironmentOrDefault(name, fallback));
 }
 
 }
@@ -78,6 +71,10 @@ int main(int argc, char* argv[])
             "DLP_DATABASE_URL",
             "postgresql://dlp:dlp@127.0.0.1:5432/dlp"
         );
+        const auto workerId = EnvironmentOrDefault("DLP_LIQUIDATOR_WORKER_ID", "liquidator-local");
+        const auto leaseDuration = std::chrono::seconds{
+            UnsignedEnvironment("DLP_LIQUIDATION_LEASE_SECONDS", "30")
+        };
         dlp::ethereum::Secp256k1Signer signer{RequiredEnvironment("DLP_OPERATOR_PRIVATE_KEY")};
         const dlp::liquidator::LiquidationContracts contracts{
             dlp::ethereum::Address::FromHex(RequiredEnvironment("DLP_POOL_ADDRESS")),
@@ -99,13 +96,9 @@ int main(int argc, char* argv[])
                 static_cast<std::uint32_t>(UnsignedEnvironment("DLP_TX_MAX_RETRIES", "3"))
             }
         };
-        dlp::risk::PostgresRiskRepository riskRepository{databaseUrl};
-        dlp::risk::RiskEngine riskEngine{riskRepository, transactionRpc.GetChainId()};
         dlp::liquidator::RpcLiquidationChain chain{rpcUrl, contracts};
         dlp::liquidator::Liquidator liquidator{
-            riskEngine,
             chain,
-            txManager,
             dlp::liquidator::LiquidatorConfig{
                 signer.GetAddress(),
                 contracts.liquidationManager,
@@ -115,20 +108,51 @@ int main(int argc, char* argv[])
                 UnsignedEnvironment("DLP_MIN_COLLATERAL_BPS", "9900")
             }
         };
+        dlp::liquidator::PostgresLiquidationJobStore jobs{databaseUrl};
+        dlp::messaging::JetStreamConsumer events{
+            EnvironmentOrDefault("DLP_NATS_URL", "nats://127.0.0.1:4222"),
+            std::string{dlp::messaging::RISK_LIQUIDATION_DETECTED},
+            "liquidator"
+        };
 
         do
         {
             try
             {
-                const auto now = static_cast<std::uint64_t>(std::time(nullptr));
-                const auto queued = liquidator.RunOnce(
-                    static_cast<std::size_t>(UnsignedEnvironment("DLP_LIQUIDATION_SCAN_LIMIT", "1000")),
-                    now
-                );
-                txManager.RunOnce();
-                if(queued != 0U)
+                auto message = events.Fetch(std::chrono::milliseconds{500});
+                if(message.has_value())
                 {
-                    std::cout << "queued " << queued << " liquidation(s)\n";
+                    const auto queued = jobs.Enqueue(message->Event());
+                    message->Ack();
+                    if(queued)
+                    {
+                        std::cout << "queued liquidation job " << message->Event().eventId << '\n';
+                    }
+                }
+
+                auto invalidated = jobs.InvalidateNonCanonical(transactionRpc.GetChainId());
+                auto job = jobs.Claim(transactionRpc.GetChainId(), workerId, leaseDuration);
+                if(job.has_value())
+                {
+                    auto submission = liquidator.Prepare(job->candidate);
+                    if(submission.has_value())
+                    {
+                        if(jobs.Submit(*job, *submission, signer.GetAddress()))
+                        {
+                            std::cout << "submitted liquidation job " << job->jobId << '\n';
+                        }
+                    }
+                    else if(jobs.Invalidate(*job, "position is no longer profitable to liquidate"))
+                    {
+                        ++invalidated;
+                    }
+                }
+                txManager.RunOnce();
+                const auto reconciled = jobs.ReconcileSubmitted();
+                if(invalidated != 0U || reconciled != 0U)
+                {
+                    std::cout << "updated " << invalidated << " stale and " << reconciled
+                              << " submitted liquidation job(s)\n";
                 }
             }
             catch(const std::exception& exception)
@@ -138,10 +162,7 @@ int main(int argc, char* argv[])
                     throw;
                 }
                 std::cerr << "liquidator iteration failed: " << exception.what() << '\n';
-            }
-            if(!runOnce)
-            {
-                std::this_thread::sleep_for(std::chrono::seconds(1));
+                std::this_thread::sleep_for(std::chrono::seconds{1});
             }
         }
         while(running.load() && !runOnce);

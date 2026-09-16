@@ -15,6 +15,7 @@ if(POLICY CMP0167)
 endif()
 
 find_package(Boost 1.74 REQUIRED COMPONENTS system)
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/HomebrewPostgreSQL.cmake)
 find_package(libpqxx 8 REQUIRED)
 
 add_library(

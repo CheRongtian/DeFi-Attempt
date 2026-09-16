@@ -397,7 +397,7 @@ contracts/test/RiskManagerGolden.t.sol
 
 ### C++ Ethereum Common Layer
 
-The modern C++17 common layer provides strongly typed Ethereum addresses and checked 256-bit integers, strict hexadecimal conversion, Ethereum-compatible Keccak-256, and fixed-type ABI encoding and event decoding for the current protocol.
+The modern C++20 common layer provides strongly typed Ethereum addresses and checked 256-bit integers, strict hexadecimal conversion, Ethereum-compatible Keccak-256, and fixed-type ABI encoding and event decoding for the current protocol.
 
 Its synchronous HTTP JSON-RPC client uses Boost.Asio and Boost.Beast with structured errors and typed responses. It supports `eth_chainId`, `eth_blockNumber`, `eth_getBlockByNumber`, and `eth_getLogs`, with the complete path verified against Anvil.
 

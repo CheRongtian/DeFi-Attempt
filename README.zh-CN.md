@@ -397,7 +397,7 @@ contracts/test/RiskManagerGolden.t.sol
 
 ### C++ Ethereum 公共层
 
-现代 C++17 公共层提供强类型 Ethereum 地址、带溢出检查的 256 位整数、严格的十六进制转换、Ethereum 兼容 Keccak-256，以及当前协议所需的固定类型 ABI 编码和事件解码。
+现代 C++20 公共层提供强类型 Ethereum 地址、带溢出检查的 256 位整数、严格的十六进制转换、Ethereum 兼容 Keccak-256，以及当前协议所需的固定类型 ABI 编码和事件解码。
 
 同步 HTTP JSON-RPC Client 使用 Boost.Asio 和 Boost.Beast，提供结构化错误与强类型返回值。当前支持 `eth_chainId`、`eth_blockNumber`、`eth_getBlockByNumber` 和 `eth_getLogs`，完整调用路径已通过 Anvil 验证。
 

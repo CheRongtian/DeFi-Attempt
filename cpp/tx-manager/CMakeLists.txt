@@ -9,6 +9,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_subdirectory(../common ${CMAKE_CURRENT_BINARY_DIR}/common)
 endif()
 
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/HomebrewPostgreSQL.cmake)
 find_package(libpqxx 8 REQUIRED)
 find_package(Threads REQUIRED)
 

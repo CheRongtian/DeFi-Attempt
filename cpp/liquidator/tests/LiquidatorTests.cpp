@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include "dlp/liquidator/Liquidator.hpp"
+#include "dlp/risk/RiskEngine.hpp"
 
 namespace dlp::liquidator
 {
@@ -40,7 +41,8 @@ risk::MarketSnapshot Market()
         1'700'000'000,
         ethereum::Uint256{},
         ethereum::Uint256{},
-        ethereum::Uint256{}
+        ethereum::Uint256{},
+        1
     };
 }
 
@@ -98,40 +100,18 @@ public:
     }
 };
 
-class MemoryQueue final : public tx::TransactionQueue
-{
-public:
-    std::size_t count{0};
-
-    bool Queue(
-        std::string,
-        const ethereum::Address&,
-        ethereum::Bytes,
-        ethereum::Uint256
-    ) override
-    {
-        ++count;
-        return true;
-    }
-};
-
 }
 
-TEST(LiquidatorTests, RevalidatesAndQueuesAProfitableCandidate)
+TEST(LiquidatorTests, RevalidatesAndPreparesAProfitableCandidate)
 {
     MemoryRiskRepository repository;
     risk::RiskEngine riskEngine{repository, ethereum::Uint256{31337}};
     MemoryChain chain;
-    MemoryQueue queue;
-    Liquidator liquidator{
-        riskEngine,
-        chain,
-        queue,
-        LiquidatorConfig{Address(9), Address(8), ethereum::Uint256{}, 9'900}
-    };
+    Liquidator liquidator{chain, LiquidatorConfig{Address(9), Address(8), ethereum::Uint256{}, 9'900}};
+    const auto candidates = riskEngine.Scan(10, 1'700'000'000);
 
-    EXPECT_EQ(liquidator.RunOnce(10, 1'700'000'000), 1U);
-    EXPECT_EQ(queue.count, 1U);
+    ASSERT_EQ(candidates.size(), 1U);
+    EXPECT_TRUE(liquidator.Prepare(candidates.front()).has_value());
 }
 
 TEST(LiquidatorTests, DropsACandidateThatIsHealthyOnTheLatestChain)
@@ -140,16 +120,11 @@ TEST(LiquidatorTests, DropsACandidateThatIsHealthyOnTheLatestChain)
     risk::RiskEngine riskEngine{repository, ethereum::Uint256{31337}};
     MemoryChain chain;
     chain.market.wethPrice = ethereum::Uint256{300'000'000'000};
-    MemoryQueue queue;
-    Liquidator liquidator{
-        riskEngine,
-        chain,
-        queue,
-        LiquidatorConfig{Address(9), Address(8), ethereum::Uint256{}, 9'900}
-    };
+    Liquidator liquidator{chain, LiquidatorConfig{Address(9), Address(8), ethereum::Uint256{}, 9'900}};
+    const auto candidates = riskEngine.Scan(10, 1'700'000'000);
 
-    EXPECT_EQ(liquidator.RunOnce(10, 1'700'000'000), 0U);
-    EXPECT_EQ(queue.count, 0U);
+    ASSERT_EQ(candidates.size(), 1U);
+    EXPECT_FALSE(liquidator.Prepare(candidates.front()).has_value());
 }
 
 }

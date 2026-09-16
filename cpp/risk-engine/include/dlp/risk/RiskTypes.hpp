@@ -44,6 +44,7 @@ struct MarketSnapshot
     ethereum::Uint256 availableUsdcLiquidity;
     ethereum::Uint256 totalScaledUsdcDebt;
     ethereum::Uint256 lastInterestTimestamp;
+    std::uint64_t canonicalVersion{0};
 };
 
 struct PositionRisk
@@ -70,6 +71,8 @@ struct LiquidationCandidate
     ethereum::Uint256 expectedBadDebt;
     std::uint64_t blockNumber{0};
     ethereum::Hash256 blockHash{};
+    ethereum::Uint256 chainId;
+    std::uint64_t canonicalVersion{0};
 };
 
 }

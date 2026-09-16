@@ -42,7 +42,8 @@ risk::MarketSnapshot Market()
         1,
         ethereum::Uint256{},
         ethereum::Uint256{},
-        ethereum::Uint256{}
+        ethereum::Uint256{},
+        1
     };
 }
 

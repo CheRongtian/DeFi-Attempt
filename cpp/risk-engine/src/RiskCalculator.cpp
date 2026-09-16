@@ -354,7 +354,9 @@ std::optional<LiquidationCandidate> RiskCalculator::BuildCandidate(
         collateralSeized,
         badDebt,
         risk.blockNumber,
-        risk.blockHash
+        risk.blockHash,
+        market.chainId,
+        market.canonicalVersion
     };
 }
 

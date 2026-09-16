@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(DlpIndexer LANGUAGES C CXX)
 
-    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CXX_STANDARD 20)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -11,24 +11,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_subdirectory(../common ${CMAKE_CURRENT_BINARY_DIR}/common)
 endif()
 
-if(APPLE AND NOT PostgreSQL_ROOT)
-    find_program(DLP_HOMEBREW_EXECUTABLE brew)
-    if(DLP_HOMEBREW_EXECUTABLE)
-        execute_process(
-            COMMAND ${DLP_HOMEBREW_EXECUTABLE} --prefix libpq
-            RESULT_VARIABLE DLP_HOMEBREW_LIBPQ_RESULT
-            OUTPUT_VARIABLE DLP_HOMEBREW_LIBPQ_PREFIX
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET
-        )
-
-        if(DLP_HOMEBREW_LIBPQ_RESULT EQUAL 0)
-            set(PostgreSQL_ROOT "${DLP_HOMEBREW_LIBPQ_PREFIX}")
-            list(PREPEND CMAKE_PREFIX_PATH "${DLP_HOMEBREW_LIBPQ_PREFIX}")
-        endif()
-    endif()
-endif()
-
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/HomebrewPostgreSQL.cmake)
 find_package(libpqxx 8 REQUIRED)
 find_package(Threads REQUIRED)
 

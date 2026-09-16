@@ -35,7 +35,8 @@ inline MarketSnapshot Market(std::uint64_t timestamp = 1'700'000'000)
         timestamp,
         ethereum::Uint256::FromDecimal("90000000000"),
         ethereum::Uint256{},
-        ethereum::Uint256{timestamp}
+        ethereum::Uint256{timestamp},
+        1
     };
 }
 
