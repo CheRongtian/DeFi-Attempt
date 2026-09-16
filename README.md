@@ -246,7 +246,7 @@ After building the C++ targets, start PostgreSQL, Anvil, deploy the contracts, a
 ./scripts/run-local.sh
 ```
 
-The local runner uses PostgreSQL port `5433`, Anvil port `8546`, and API port `8081` by default. Contract addresses are written to the ignored `.env.local` file. When the current RPC and deployed contracts can be reused, their indexed database state is preserved. A new chain deployment automatically removes the old PostgreSQL volume so stale indexed state and transaction nonces cannot leak into the new chain.
+The local runner uses PostgreSQL port `5433`, Anvil port `8546`, and API port `18080` by default. Contract addresses are written to the ignored `.env.local` file. When the current RPC and deployed contracts can be reused, their indexed database state is preserved. A new chain deployment automatically removes the old PostgreSQL volume so stale indexed state and transaction nonces cannot leak into the new chain.
 
 To force removal of the local PostgreSQL volume before startup:
 
@@ -259,9 +259,9 @@ Keep the runner open and create a complete liquidation scenario from another ter
 ```bash
 ./scripts/create-liquidation-scenario.sh
 
-curl -sS http://127.0.0.1:8081/markets
-curl -sS http://127.0.0.1:8081/liquidations
-curl -sS http://127.0.0.1:8081/protocol/stats
+curl -sS http://127.0.0.1:18080/markets
+curl -sS http://127.0.0.1:18080/liquidations
+curl -sS http://127.0.0.1:18080/protocol/stats
 ```
 
 After the Indexer catches up, the scenario produces five partial liquidations, exhausts the borrower's collateral, and records the remaining debt as bad debt. Press `Ctrl+C` to stop the C++ services and the Anvil process started by the runner. The PostgreSQL container remains available until the next reset.

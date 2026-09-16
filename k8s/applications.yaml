@@ -1,0 +1,188 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dlp-runtime
+  namespace: dlp
+data:
+  DLP_DATABASE_URL: postgresql://dlp:dlp@postgres:5432/dlp
+  DLP_RPC_URL: http://anvil:8545
+  DLP_NATS_URL: nats://nats:4222
+  DLP_API_ADDRESS: 0.0.0.0
+  DLP_API_PORT: "8080"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: indexer
+  namespace: dlp
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: indexer
+  template:
+    metadata:
+      labels:
+        app: indexer
+    spec:
+      containers:
+        - name: indexer
+          image: dlp/indexer:local
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: dlp-runtime
+            - configMapRef:
+                name: dlp-contracts
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: outbox-publisher
+  namespace: dlp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: outbox-publisher
+  template:
+    metadata:
+      labels:
+        app: outbox-publisher
+    spec:
+      containers:
+        - name: outbox-publisher
+          image: dlp/outbox-publisher:local
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: dlp-runtime
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: risk-engine
+  namespace: dlp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: risk-engine
+  template:
+    metadata:
+      labels:
+        app: risk-engine
+    spec:
+      containers:
+        - name: risk-engine
+          image: dlp/risk-engine:local
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: dlp-runtime
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tx-manager
+  namespace: dlp
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: tx-manager
+  template:
+    metadata:
+      labels:
+        app: tx-manager
+    spec:
+      containers:
+        - name: tx-manager
+          image: dlp/tx-manager:local
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: dlp-runtime
+            - secretRef:
+                name: dlp-operator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: liquidator
+  namespace: dlp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: liquidator
+  template:
+    metadata:
+      labels:
+        app: liquidator
+    spec:
+      containers:
+        - name: liquidator
+          image: dlp/liquidator:local
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: dlp-runtime
+            - configMapRef:
+                name: dlp-contracts
+          env:
+            - name: DLP_LIQUIDATOR_WORKER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-server
+  namespace: dlp
+spec:
+  type: NodePort
+  selector:
+    app: api-server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      nodePort: 30080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+  namespace: dlp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-server
+  template:
+    metadata:
+      labels:
+        app: api-server
+    spec:
+      containers:
+        - name: api-server
+          image: dlp/api-server:local
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: dlp-runtime
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /protocol/stats
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 2

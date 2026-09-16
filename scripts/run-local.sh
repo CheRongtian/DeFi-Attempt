@@ -8,6 +8,7 @@ ENV_FILE="$PROJECT_ROOT/.env.local"
 INDEXER_EXECUTABLE="$PROJECT_ROOT/build/cpp/indexer/dlp_indexer"
 OUTBOX_EXECUTABLE="$PROJECT_ROOT/build/cpp/messaging/dlp_outbox_publisher"
 RISK_WORKER_EXECUTABLE="$PROJECT_ROOT/build/cpp/risk-engine/dlp_risk_worker"
+TX_MANAGER_EXECUTABLE="$PROJECT_ROOT/build/cpp/tx-manager/dlp_tx_manager"
 LIQUIDATOR_EXECUTABLE="$PROJECT_ROOT/build/cpp/liquidator/dlp_liquidator"
 API_EXECUTABLE="$PROJECT_ROOT/build/cpp/api-server/dlp_api_server"
 
@@ -24,6 +25,7 @@ NATS_URL="nats://127.0.0.1:$NATS_PORT"
 ANVIL_PID=""
 OUTBOX_PID=""
 RISK_WORKER_PID=""
+TX_MANAGER_PID=""
 LIQUIDATOR_PID=""
 API_PID=""
 CLEAN_DATABASE=false
@@ -55,6 +57,11 @@ cleanup()
         kill "$RISK_WORKER_PID"
         wait "$RISK_WORKER_PID" 2>/dev/null || true
     fi
+    if [[ -n $TX_MANAGER_PID ]] && kill -0 "$TX_MANAGER_PID" 2>/dev/null
+    then
+        kill "$TX_MANAGER_PID"
+        wait "$TX_MANAGER_PID" 2>/dev/null || true
+    fi
     if [[ -n $LIQUIDATOR_PID ]] && kill -0 "$LIQUIDATOR_PID" 2>/dev/null
     then
         kill "$LIQUIDATOR_PID"
@@ -77,6 +84,7 @@ trap cleanup EXIT INT TERM
 if [[ ! -x $INDEXER_EXECUTABLE \
     || ! -x $OUTBOX_EXECUTABLE \
     || ! -x $RISK_WORKER_EXECUTABLE \
+    || ! -x $TX_MANAGER_EXECUTABLE \
     || ! -x $LIQUIDATOR_EXECUTABLE \
     || ! -x $API_EXECUTABLE ]]
 then
@@ -98,7 +106,8 @@ then
     source "$ENV_FILE"
     if [[ ${DLP_RPC_URL:-} == "$RPC_URL" \
         && -n ${DLP_POOL_ADDRESS:-} \
-        && -n ${DLP_LIQUIDATION_MANAGER_ADDRESS:-} ]]
+        && -n ${DLP_LIQUIDATION_MANAGER_ADDRESS:-} \
+        && -n ${DLP_OPERATOR_ADDRESS:-} ]]
     then
         pool_code=$(cast code "$DLP_POOL_ADDRESS" --rpc-url "$RPC_URL" 2>/dev/null || true)
         liquidation_code=$(cast code "$DLP_LIQUIDATION_MANAGER_ADDRESS" --rpc-url "$RPC_URL" 2>/dev/null || true)
@@ -202,7 +211,7 @@ fi
 export DLP_DATABASE_URL="$DATABASE_URL"
 export DLP_NATS_URL="$NATS_URL"
 export DLP_API_ADDRESS=${DLP_API_ADDRESS:-127.0.0.1}
-export DLP_API_PORT=${DLP_API_PORT:-8081}
+export DLP_API_PORT=${DLP_API_PORT:-18080}
 
 printf 'Starting local services...\n'
 printf '  RPC:        %s\n' "$DLP_RPC_URL"
@@ -216,6 +225,8 @@ printf '  API:        http://%s:%s\n' "$DLP_API_ADDRESS" "$DLP_API_PORT"
 OUTBOX_PID=$!
 "$RISK_WORKER_EXECUTABLE" &
 RISK_WORKER_PID=$!
+"$TX_MANAGER_EXECUTABLE" &
+TX_MANAGER_PID=$!
 "$LIQUIDATOR_EXECUTABLE" &
 LIQUIDATOR_PID=$!
 "$API_EXECUTABLE" &

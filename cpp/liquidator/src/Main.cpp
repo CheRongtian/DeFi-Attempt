@@ -10,14 +10,11 @@
 #include <thread>
 
 #include "dlp/ethereum/Address.hpp"
-#include "dlp/ethereum/Transaction.hpp"
+#include "dlp/ethereum/RpcClient.hpp"
 #include "dlp/liquidator/LiquidationChain.hpp"
 #include "dlp/liquidator/LiquidationJobs.hpp"
 #include "dlp/liquidator/Liquidator.hpp"
 #include "dlp/messaging/JetStream.hpp"
-#include "dlp/tx/PostgresTransactionStore.hpp"
-#include "dlp/tx/TransactionRpc.hpp"
-#include "dlp/tx/TxManager.hpp"
 
 namespace
 {
@@ -75,7 +72,9 @@ int main(int argc, char* argv[])
         const auto leaseDuration = std::chrono::seconds{
             UnsignedEnvironment("DLP_LIQUIDATION_LEASE_SECONDS", "30")
         };
-        dlp::ethereum::Secp256k1Signer signer{RequiredEnvironment("DLP_OPERATOR_PRIVATE_KEY")};
+        const auto operatorAddress = dlp::ethereum::Address::FromHex(
+            RequiredEnvironment("DLP_OPERATOR_ADDRESS")
+        );
         const dlp::liquidator::LiquidationContracts contracts{
             dlp::ethereum::Address::FromHex(RequiredEnvironment("DLP_POOL_ADDRESS")),
             dlp::ethereum::Address::FromHex(RequiredEnvironment("DLP_LIQUIDATION_MANAGER_ADDRESS")),
@@ -84,23 +83,12 @@ int main(int argc, char* argv[])
             dlp::ethereum::Address::FromHex(RequiredEnvironment("DLP_USDC_ADDRESS"))
         };
 
-        dlp::tx::PostgresTransactionStore txStore{databaseUrl};
-        dlp::tx::RpcTransactionClient transactionRpc{rpcUrl};
-        dlp::tx::TxManager txManager{
-            txStore,
-            transactionRpc,
-            signer,
-            dlp::tx::TxManagerConfig{
-                UnsignedEnvironment("DLP_TX_CONFIRMATIONS", "1"),
-                UnsignedEnvironment("DLP_TX_REPLACEMENT_BLOCKS", "3"),
-                static_cast<std::uint32_t>(UnsignedEnvironment("DLP_TX_MAX_RETRIES", "3"))
-            }
-        };
+        const auto chainId = dlp::ethereum::RpcClient{rpcUrl}.GetChainId();
         dlp::liquidator::RpcLiquidationChain chain{rpcUrl, contracts};
         dlp::liquidator::Liquidator liquidator{
             chain,
             dlp::liquidator::LiquidatorConfig{
-                signer.GetAddress(),
+                operatorAddress,
                 contracts.liquidationManager,
                 dlp::ethereum::Uint256::FromDecimal(
                     EnvironmentOrDefault("DLP_MIN_LIQUIDATION_PROFIT_USD_WAD", "0")
@@ -130,14 +118,14 @@ int main(int argc, char* argv[])
                     }
                 }
 
-                auto invalidated = jobs.InvalidateNonCanonical(transactionRpc.GetChainId());
-                auto job = jobs.Claim(transactionRpc.GetChainId(), workerId, leaseDuration);
+                auto invalidated = jobs.InvalidateNonCanonical(chainId);
+                auto job = jobs.Claim(chainId, workerId, leaseDuration);
                 if(job.has_value())
                 {
                     auto submission = liquidator.Prepare(job->candidate);
                     if(submission.has_value())
                     {
-                        if(jobs.Submit(*job, *submission, signer.GetAddress()))
+                        if(jobs.Submit(*job, *submission, operatorAddress))
                         {
                             std::cout << "submitted liquidation job " << job->jobId << '\n';
                         }
@@ -147,7 +135,6 @@ int main(int argc, char* argv[])
                         ++invalidated;
                     }
                 }
-                txManager.RunOnce();
                 const auto reconciled = jobs.ReconcileSubmitted();
                 if(invalidated != 0U || reconciled != 0U)
                 {

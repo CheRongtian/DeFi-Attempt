@@ -1,0 +1,10 @@
+.git
+.env
+.env.*
+build
+cmake-build-*
+contracts/broadcast
+contracts/cache
+contracts/out
+PLAN.md
+IMPLEMENTATION.md

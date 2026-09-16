@@ -3,7 +3,7 @@
 set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-ENV_FILE="$PROJECT_ROOT/.env.local"
+ENV_FILE=${1:-${DLP_ENV_FILE:-"$PROJECT_ROOT/.env.local"}}
 
 source "$ENV_FILE"
 

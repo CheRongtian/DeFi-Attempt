@@ -1,0 +1,114 @@
+x-runtime-environment: &runtime-environment
+  DLP_DATABASE_URL: postgresql://${DLP_POSTGRES_USER:-dlp}:${DLP_POSTGRES_PASSWORD:-dlp}@postgres:5432/${DLP_POSTGRES_DB:-dlp}
+  DLP_RPC_URL: http://anvil:8545
+  DLP_NATS_URL: nats://nats:4222
+  DLP_WETH_ADDRESS: ${DLP_WETH_ADDRESS:-}
+  DLP_USDC_ADDRESS: ${DLP_USDC_ADDRESS:-}
+  DLP_ORACLE_ADDRESS: ${DLP_ORACLE_ADDRESS:-}
+  DLP_POOL_ADDRESS: ${DLP_POOL_ADDRESS:-}
+  DLP_LIQUIDATION_MANAGER_ADDRESS: ${DLP_LIQUIDATION_MANAGER_ADDRESS:-}
+  DLP_OPERATOR_ADDRESS: ${DLP_OPERATOR_ADDRESS:-}
+
+services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    entrypoint: ["anvil"]
+    command: ["--host", "0.0.0.0", "--port", "8545"]
+    ports:
+      - "${DLP_ANVIL_PORT:-8546}:8545"
+    healthcheck:
+      test: ["CMD", "cast", "block-number", "--rpc-url", "http://127.0.0.1:8545"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  indexer:
+    image: dlp/indexer:local
+    build:
+      context: .
+      target: indexer
+    environment: *runtime-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      anvil:
+        condition: service_healthy
+    restart: unless-stopped
+
+  outbox-publisher:
+    image: dlp/outbox-publisher:local
+    build:
+      context: .
+      target: outbox-publisher
+    environment: *runtime-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
+  risk-engine:
+    image: dlp/risk-engine:local
+    build:
+      context: .
+      target: risk-engine
+    environment: *runtime-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      anvil:
+        condition: service_healthy
+    restart: unless-stopped
+
+  tx-manager:
+    image: dlp/tx-manager:local
+    build:
+      context: .
+      target: tx-manager
+    environment:
+      <<: *runtime-environment
+      DLP_OPERATOR_PRIVATE_KEY: ${DLP_OPERATOR_PRIVATE_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      anvil:
+        condition: service_healthy
+    restart: unless-stopped
+
+  liquidator:
+    image: dlp/liquidator:local
+    build:
+      context: .
+      target: liquidator
+    environment:
+      <<: *runtime-environment
+      DLP_LIQUIDATOR_WORKER_ID: liquidator-compose
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      anvil:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api-server:
+    image: dlp/api-server:local
+    build:
+      context: .
+      target: api-server
+    environment:
+      <<: *runtime-environment
+      DLP_API_ADDRESS: 0.0.0.0
+      DLP_API_PORT: 8080
+    ports:
+      - "${DLP_API_PORT:-18080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      anvil:
+        condition: service_healthy
+    restart: unless-stopped

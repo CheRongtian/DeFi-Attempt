@@ -4,9 +4,9 @@ set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 CONTRACTS_DIR="$PROJECT_ROOT/contracts"
-ENV_FILE="$PROJECT_ROOT/.env.local"
 
 RPC_URL=${1:-${DLP_RPC_URL:-http://127.0.0.1:8545}}
+ENV_FILE=${2:-"$PROJECT_ROOT/.env.local"}
 ANVIL_PRIVATE_KEY_VALUE=${ANVIL_PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
 
 deploy_contract()
@@ -81,6 +81,7 @@ cast send "$USDC_ADDRESS" "approve(address,uint256)" \
     printf 'export DLP_RISK_MANAGER_ADDRESS=%q\n' "$RISK_MANAGER_ADDRESS"
     printf 'export DLP_POOL_ADDRESS=%q\n' "$POOL_ADDRESS"
     printf 'export DLP_LIQUIDATION_MANAGER_ADDRESS=%q\n' "$LIQUIDATION_MANAGER_ADDRESS"
+    printf 'export DLP_OPERATOR_ADDRESS=%q\n' "$OPERATOR_ADDRESS"
     printf 'export DLP_OPERATOR_PRIVATE_KEY=%q\n' "$ANVIL_PRIVATE_KEY_VALUE"
 } > "$ENV_FILE"
 

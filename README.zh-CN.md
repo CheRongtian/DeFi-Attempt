@@ -246,7 +246,7 @@ ctest --test-dir build --output-on-failure \
 ./scripts/run-local.sh
 ```
 
-本地脚本默认使用 PostgreSQL `5433`、Anvil `8546` 和 API `8081` 端口，合约地址写入已被忽略的 `.env.local`。当前 RPC 和已部署合约可以复用时，脚本会保留对应的索引数据；需要部署新链时，脚本会自动删除旧 PostgreSQL volume，避免旧索引状态和交易 nonce 混入新链。
+本地脚本默认使用 PostgreSQL `5433`、Anvil `8546` 和 API `18080` 端口，合约地址写入已被忽略的 `.env.local`。当前 RPC 和已部署合约可以复用时，脚本会保留对应的索引数据；需要部署新链时，脚本会自动删除旧 PostgreSQL volume，避免旧索引状态和交易 nonce 混入新链。
 
 如需在启动前强制删除本地 PostgreSQL volume：
 
@@ -259,9 +259,9 @@ ctest --test-dir build --output-on-failure \
 ```bash
 ./scripts/create-liquidation-scenario.sh
 
-curl -sS http://127.0.0.1:8081/markets
-curl -sS http://127.0.0.1:8081/liquidations
-curl -sS http://127.0.0.1:8081/protocol/stats
+curl -sS http://127.0.0.1:18080/markets
+curl -sS http://127.0.0.1:18080/liquidations
+curl -sS http://127.0.0.1:18080/protocol/stats
 ```
 
 Indexer 追上链头后，该场景会产生五次部分清算、耗尽借款人的抵押物，并将剩余债务记录为坏账。按 `Ctrl+C` 会停止 C++ 服务及脚本启动的 Anvil；PostgreSQL 容器会保留到下一次重置。
