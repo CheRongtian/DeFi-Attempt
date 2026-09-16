@@ -6,5 +6,6 @@ cmake-build-*
 contracts/broadcast
 contracts/cache
 contracts/out
+go/oracle-coordinator/oracle-coordinator
 PLAN.md
 IMPLEMENTATION.md

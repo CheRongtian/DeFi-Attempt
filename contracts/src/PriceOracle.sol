@@ -7,6 +7,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 /// @notice Administrator-managed USD prices for the local and testnet lending protocol.
 contract PriceOracle is AccessControl {
     uint8 public constant PRICE_DECIMALS = 8;
+    bytes32 public constant PUBLISHER_ROLE = keccak256("PUBLISHER_ROLE");
 
     struct AssetPrice {
         uint256 price;
@@ -17,17 +18,22 @@ contract PriceOracle is AccessControl {
 
     /// @notice Raw stored data; use getPrice() when a fresh price is required.
     mapping(address asset => AssetPrice) public assetPrices;
+    mapping(address asset => uint256 roundId) public latestRoundIds;
 
     error InvalidAsset(address asset);
     error InvalidMaxPriceAge(uint256 maxPriceAge);
     error AssetAlreadyRegistered(address asset);
     error UnsupportedAsset(address asset);
     error InvalidPrice();
+    error InvalidReportTimestamp(uint256 reportedAt);
+    error StaleReport(address asset, uint256 reportedAt);
+    error InvalidRound(uint256 currentRoundId, uint256 submittedRoundId);
     error PriceNotSet(address asset);
     error StalePrice(address asset);
 
     event AssetRegistered(address indexed asset, uint256 maxPriceAge);
     event PriceUpdated(address indexed asset, uint256 price, uint256 updatedAt);
+    event PricePublished(address indexed asset, uint256 price, uint256 reportedAt, uint256 roundId);
 
     constructor() {
         _grantRole(DEFAULT_ADMIN_ROLE, _msgSender());
@@ -56,6 +62,30 @@ contract PriceOracle is AccessControl {
         data.updatedAt = block.timestamp;
 
         emit PriceUpdated(asset, price, block.timestamp);
+    }
+
+    /// @notice Publish a provider-aggregated price for a strictly newer oracle round.
+    function publishPrice(address asset, uint256 price, uint256 reportedAt, uint256 roundId)
+        external
+        onlyRole(PUBLISHER_ROLE)
+    {
+        AssetPrice storage data = assetPrices[asset];
+        if (!data.registered) revert UnsupportedAsset(asset);
+        if (price == 0) revert InvalidPrice();
+        if (reportedAt > block.timestamp) revert InvalidReportTimestamp(reportedAt);
+        // Oracle freshness is intentionally measured using the chain timestamp.
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp - reportedAt > data.maxPriceAge) revert StaleReport(asset, reportedAt);
+
+        uint256 currentRoundId = latestRoundIds[asset];
+        if (roundId <= currentRoundId) revert InvalidRound(currentRoundId, roundId);
+
+        latestRoundIds[asset] = roundId;
+        data.price = price;
+        data.updatedAt = reportedAt;
+
+        emit PriceUpdated(asset, price, reportedAt);
+        emit PricePublished(asset, price, reportedAt, roundId);
     }
 
     /// @notice Return the fresh USD price with 8 decimals.

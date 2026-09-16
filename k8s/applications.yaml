@@ -5,7 +5,12 @@ metadata:
   namespace: dlp
 data:
   DLP_DATABASE_URL: postgresql://dlp:dlp@postgres:5432/dlp
-  DLP_RPC_URL: http://anvil:8545
+  DLP_RPC_URL: http://rpc-a:8545
+  DLP_RPC_PRIMARY_URL: http://rpc-a:8545
+  DLP_RPC_FAILOVER_URLS: http://rpc-b:8545
+  DLP_READ_RPC_URLS: http://rpc-a:8545,http://rpc-b:8545
+  DLP_RPC_BROADCAST_URLS: http://rpc-a:8545,http://rpc-b:8545
+  DLP_CHAIN_ID: "31337"
   DLP_NATS_URL: nats://nats:4222
   DLP_API_ADDRESS: 0.0.0.0
   DLP_API_PORT: "8080"
@@ -139,6 +144,86 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: oracle-coordinator
+  namespace: dlp
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: oracle-coordinator
+  namespace: dlp
+rules:
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: oracle-coordinator
+  namespace: dlp
+subjects:
+  - kind: ServiceAccount
+    name: oracle-coordinator
+    namespace: dlp
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: oracle-coordinator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oracle-coordinator
+  namespace: dlp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: oracle-coordinator
+  template:
+    metadata:
+      labels:
+        app: oracle-coordinator
+    spec:
+      serviceAccountName: oracle-coordinator
+      containers:
+        - name: oracle-coordinator
+          image: dlp/oracle-coordinator:local
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: dlp-runtime
+            - configMapRef:
+                name: dlp-contracts
+          env:
+            - name: DLP_ORACLE_ASSET_ADDRESS
+              valueFrom:
+                configMapKeyRef:
+                  name: dlp-contracts
+                  key: DLP_WETH_ADDRESS
+            - name: DLP_ORACLE_LEADER_ELECTION
+              value: "true"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
 ---
 apiVersion: v1
 kind: Service

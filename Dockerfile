@@ -85,3 +85,15 @@ ENTRYPOINT ["dlp_liquidator"]
 FROM runtime AS api-server
 EXPOSE 8080
 ENTRYPOINT ["dlp_api_server"]
+
+FROM golang:1.25-bookworm AS oracle-builder
+
+WORKDIR /source
+COPY go/oracle-coordinator/go.mod ./
+RUN go mod download
+COPY go/oracle-coordinator/ ./
+RUN CGO_ENABLED=0 go build -o /oracle-coordinator ./cmd/oracle-coordinator
+
+FROM gcr.io/distroless/static-debian12:nonroot AS oracle-coordinator
+COPY --from=oracle-builder /oracle-coordinator /usr/local/bin/oracle-coordinator
+ENTRYPOINT ["/usr/local/bin/oracle-coordinator"]

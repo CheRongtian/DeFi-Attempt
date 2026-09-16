@@ -37,7 +37,7 @@ compose()
 
 start_infrastructure()
 {
-    compose up -d --wait postgres nats anvil
+    compose up -d --wait postgres nats anvil rpc-a rpc-b
 }
 
 cd "$PROJECT_ROOT"
@@ -93,6 +93,7 @@ compose up -d --build \
     outbox-publisher \
     risk-engine \
     tx-manager \
+    oracle-coordinator \
     liquidator \
     api-server
 

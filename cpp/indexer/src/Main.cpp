@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "dlp/ethereum/Address.hpp"
+#include "dlp/ethereum/RpcEndpoints.hpp"
 #include "dlp/indexer/Indexer.hpp"
 #include "dlp/indexer/PostgresStore.hpp"
 #include "dlp/indexer/RpcChainClient.hpp"
@@ -76,7 +77,12 @@ int main(int argc, char* argv[])
             dlp::ethereum::Address::FromHex(RequiredEnvironment("DLP_USDC_ADDRESS"))
         };
         dlp::indexer::RpcChainClient chain{
-            EnvironmentOrDefault("DLP_RPC_URL", "http://127.0.0.1:8545"),
+            dlp::ethereum::MergeRpcEndpoints(
+                EnvironmentOrDefault("DLP_RPC_URL", "http://127.0.0.1:8545"),
+                dlp::ethereum::ParseRpcEndpoints(
+                    EnvironmentOrDefault("DLP_RPC_FAILOVER_URLS", "")
+                )
+            ),
             contracts
         };
         dlp::indexer::PostgresStore store{

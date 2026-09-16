@@ -2,6 +2,7 @@
 #define DLP_INDEXER_RPC_CHAIN_CLIENT_HPP
 
 #include <chrono>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,18 @@ public:
         ChainContracts contracts,
         std::chrono::milliseconds timeout = std::chrono::seconds(5)
     );
+    RpcChainClient(
+        std::vector<std::string> endpoints,
+        ChainContracts contracts,
+        std::chrono::milliseconds timeout = std::chrono::seconds(5)
+    );
+    ~RpcChainClient() override;
+
+    RpcChainClient(RpcChainClient&& other) noexcept;
+    RpcChainClient& operator=(RpcChainClient&& other) noexcept;
+
+    RpcChainClient(const RpcChainClient&) = delete;
+    RpcChainClient& operator=(const RpcChainClient&) = delete;
 
     [[nodiscard]] ethereum::Uint256 GetChainId() const override;
     [[nodiscard]] std::uint64_t GetBlockNumber() const override;
@@ -29,8 +42,8 @@ public:
     [[nodiscard]] std::vector<ethereum::RpcLog> GetLogs(std::uint64_t blockNumber) const override;
 
 private:
-    ethereum::RpcClient client_;
-    ChainContracts contracts_;
+    class Impl;
+    std::unique_ptr<Impl> implementation_;
 };
 
 }

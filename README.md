@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md)
 
-A Solidity-based overcollateralized lending protocol with C++ services for Ethereum RPC, reorg-aware indexing, risk scanning, transaction management, automated liquidation, and a PostgreSQL-backed REST API. Foundry is used for smart contracts, while CMake and CTest build and verify the C++ components.
+A Solidity-based overcollateralized lending protocol with C++20 services for indexing, risk scanning, transaction management, automated liquidation, and a PostgreSQL-backed REST API. A Go Oracle Coordinator publishes aggregated prices with leader election and database fencing. The complete stack runs through Docker Compose or a local kind cluster with purpose-specific RPC failover.
 
 ## Project Structure
 
@@ -58,6 +58,7 @@ DeFi/
 │   │   │   ├── Keccak.hpp
 │   │   │   ├── ProtocolAbi.hpp
 │   │   │   ├── RpcClient.hpp
+│   │   │   ├── RpcEndpoints.hpp
 │   │   │   ├── Uint256.hpp
 │   │   │   └── Uint256Math.hpp
 │   │   ├── smoke/
@@ -69,6 +70,7 @@ DeFi/
 │   │   │   ├── Keccak.cpp
 │   │   │   ├── ProtocolAbi.cpp
 │   │   │   ├── RpcClient.cpp
+│   │   │   ├── RpcEndpoints.cpp
 │   │   │   ├── Uint256.cpp
 │   │   │   └── Uint256Math.cpp
 │   │   ├── tests/
@@ -78,9 +80,14 @@ DeFi/
 │   │   │   ├── KeccakTests.cpp
 │   │   │   ├── ProtocolAbiTests.cpp
 │   │   │   ├── RpcClientIntegrationTests.cpp
+│   │   │   ├── RpcEndpointsTests.cpp
 │   │   │   ├── Uint256Tests.cpp
 │   │   │   └── Uint256MathTests.cpp
 │   │   └── CMakeLists.txt
+│   ├── messaging/
+│   │   ├── include/dlp/messaging/
+│   │   ├── src/
+│   │   └── tests/
 │   ├── indexer/
 │   │   ├── include/dlp/indexer/
 │   │   ├── src/
@@ -110,16 +117,37 @@ DeFi/
 │       ├── 004_create_positions.sql
 │       ├── 005_create_markets.sql
 │       ├── 006_create_liquidations.sql
-│       └── 007_create_tx_jobs.sql
+│       ├── 007_create_tx_jobs.sql
+│       ├── 008_create_outbox_events.sql
+│       ├── 009_create_liquidation_jobs.sql
+│       └── 010_create_oracle_publications.sql
+├── go/
+│   └── oracle-coordinator/
+│       ├── cmd/oracle-coordinator/
+│       ├── internal/oracle/
+│       ├── go.mod
+│       └── go.sum
+├── infrastructure/
+│   └── rpc-proxy/
+├── k8s/
+│   ├── applications.yaml
+│   ├── infrastructure.yaml
+│   ├── kind-config.yaml
+│   └── migrations-job.yaml
 ├── scripts/
 │   ├── create-liquidation-scenario.sh
 │   ├── deploy-local.sh
-│   └── run-local.sh
+│   ├── run-containers.sh
+│   ├── run-kind.sh
+│   ├── run-local.sh
+│   └── scale-kind.sh
 ├── tests/
 │   └── golden/
 │       └── risk_vectors.json
 ├── .gitignore
 ├── CMakeLists.txt
+├── Dockerfile
+├── compose.apps.yaml
 ├── compose.yaml
 ├── README.md
 └── README.zh-CN.md
@@ -131,8 +159,10 @@ DeFi/
 - Bash or Zsh
 - `curl`
 - A C++20 compiler and CMake 3.20 or newer
+- Go 1.25 or newer
 - Boost 1.74 or newer, nlohmann/json 3.10 or newer, GoogleTest, libpq, and libpqxx 8
 - Docker with Docker Compose
+- `kubectl` and kind for the Kubernetes deployment
 - Foundry with Anvil for local deployment and RPC integration
 - An internet connection for installing Foundry, downloading Solc, and fetching the pinned Ethereum Keccak dependency on the first CMake configuration
 
@@ -238,6 +268,14 @@ ctest --test-dir build --output-on-failure \
 -R RpcChainClientIntegrationTests
 ```
 
+### Go
+
+```bash
+cd go/oracle-coordinator
+go mod tidy
+go test ./...
+```
+
 ## Run Locally
 
 After building the C++ targets, start PostgreSQL, Anvil, deploy the contracts, and run the Indexer, Liquidator, and API Server with one command:
@@ -265,6 +303,27 @@ curl -sS http://127.0.0.1:18080/protocol/stats
 ```
 
 After the Indexer catches up, the scenario produces five partial liquidations, exhausts the borrower's collateral, and records the remaining debt as bad debt. Press `Ctrl+C` to stop the C++ services and the Anvil process started by the runner. The PostgreSQL container remains available until the next reset.
+
+## Run with kind
+
+Build the service images, create a fresh kind cluster, deploy the contracts, run the database migrations, and start the complete stack:
+
+```bash
+./scripts/run-kind.sh --clean
+```
+
+The API is available at `http://127.0.0.1:18080`. A run interrupted by a slow image pull can continue without deleting the cluster:
+
+```bash
+./scripts/run-kind.sh
+```
+
+Inspect the deployment and the elected Oracle leader with:
+
+```bash
+kubectl --context kind-dlp get pods -n dlp
+kubectl --context kind-dlp get lease oracle-coordinator -n dlp
+```
 
 ## Implemented Features
 
@@ -306,7 +365,7 @@ contracts/test/MockWETH.t.sol
 
 ### Price Oracle
 
-An administrator-managed price oracle with 8-decimal prices, asset registration, update timestamps, and stale-price validation.
+An 8-decimal price oracle with asset registration, stale-price validation, administrator updates, and role-controlled aggregated publications. Published reports must use a fresh timestamp and a strictly increasing round ID.
 
 Files:
 
@@ -439,16 +498,19 @@ cpp/risk-engine/
 tests/golden/risk_vectors.json
 ```
 
-### Transaction Manager and Liquidator
+### Transactional Messaging and Leased Liquidation
 
-The persistent Transaction Manager signs EIP-1559 transactions, allocates nonces from RPC and PostgreSQL state, tracks submission and receipts, replaces stale transactions, and records finality or reorgs. The single-instance Liquidator revalidates candidates against the latest chain state, checks profitability, and submits capped liquidations through the manager.
+PostgreSQL transactional outbox records are published to NATS JetStream and consumed idempotently. Liquidation jobs use database leases and fencing tokens so multiple Liquidator replicas can safely claim work. The persistent Transaction Manager signs EIP-1559 transactions, recovers nonces, replaces stale submissions, and records finality or reorgs.
 
 Files:
 
 ```text
 cpp/tx-manager/
 cpp/liquidator/
+cpp/messaging/
 database/migrations/007_create_tx_jobs.sql
+database/migrations/008_create_outbox_events.sql
+database/migrations/009_create_liquidation_jobs.sql
 scripts/create-liquidation-scenario.sh
 ```
 
@@ -471,4 +533,34 @@ Files:
 
 ```text
 cpp/api-server/
+```
+
+### Containers and Kubernetes
+
+Multi-stage images package the C++ and Go services. Docker Compose provides the containerized local stack, while kind runs PostgreSQL, JetStream, Anvil, two RPC proxy endpoints, all application services, and replicated workers through Kubernetes manifests.
+
+Files:
+
+```text
+Dockerfile
+compose.apps.yaml
+k8s/
+scripts/run-containers.sh
+scripts/run-kind.sh
+scripts/scale-kind.sh
+```
+
+### Highly Available Oracle and RPC Routing
+
+Three simulated price providers are aggregated by median. Three Go Oracle Coordinator replicas use a Kubernetes Lease to elect one publisher, while PostgreSQL fencing, monotonic round IDs, and idempotent transaction jobs protect publication. The private key remains isolated in the C++ Transaction Manager.
+
+RPC routing follows request semantics: the Indexer uses an active/failover pair with chain and canonical-block verification, the API round-robins read requests, and the Transaction Manager obtains pending nonces from the preferred primary while broadcasting the same signed payload to both endpoints.
+
+Files:
+
+```text
+go/oracle-coordinator/
+database/migrations/010_create_oracle_publications.sql
+infrastructure/rpc-proxy/
+cpp/common/include/dlp/ethereum/RpcEndpoints.hpp
 ```

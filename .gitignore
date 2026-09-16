@@ -6,6 +6,7 @@ contracts/out/
 contracts/broadcast/
 build/
 cmake-build-*/
+go/oracle-coordinator/oracle-coordinator
 .idea/
 .env
 .env.*

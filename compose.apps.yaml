@@ -1,6 +1,11 @@
 x-runtime-environment: &runtime-environment
   DLP_DATABASE_URL: postgresql://${DLP_POSTGRES_USER:-dlp}:${DLP_POSTGRES_PASSWORD:-dlp}@postgres:5432/${DLP_POSTGRES_DB:-dlp}
-  DLP_RPC_URL: http://anvil:8545
+  DLP_RPC_URL: http://rpc-a:8545
+  DLP_RPC_PRIMARY_URL: http://rpc-a:8545
+  DLP_RPC_FAILOVER_URLS: http://rpc-b:8545
+  DLP_READ_RPC_URLS: http://rpc-a:8545,http://rpc-b:8545
+  DLP_RPC_BROADCAST_URLS: http://rpc-a:8545,http://rpc-b:8545
+  DLP_CHAIN_ID: "31337"
   DLP_NATS_URL: nats://nats:4222
   DLP_WETH_ADDRESS: ${DLP_WETH_ADDRESS:-}
   DLP_USDC_ADDRESS: ${DLP_USDC_ADDRESS:-}
@@ -21,6 +26,24 @@ services:
       interval: 2s
       timeout: 3s
       retries: 15
+
+  rpc-a:
+    image: nginx:1.29-alpine
+    volumes:
+      - ./infrastructure/rpc-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      anvil:
+        condition: service_healthy
+    restart: unless-stopped
+
+  rpc-b:
+    image: nginx:1.29-alpine
+    volumes:
+      - ./infrastructure/rpc-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      anvil:
+        condition: service_healthy
+    restart: unless-stopped
 
   indexer:
     image: dlp/indexer:local
@@ -75,6 +98,20 @@ services:
       postgres:
         condition: service_healthy
       anvil:
+        condition: service_healthy
+    restart: unless-stopped
+
+  oracle-coordinator:
+    image: dlp/oracle-coordinator:local
+    build:
+      context: .
+      target: oracle-coordinator
+    environment:
+      <<: *runtime-environment
+      DLP_ORACLE_ASSET_ADDRESS: ${DLP_WETH_ADDRESS:-}
+      DLP_ORACLE_LEADER_ELECTION: "false"
+    depends_on:
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 

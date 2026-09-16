@@ -1,14 +1,19 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "dlp/ethereum/Transaction.hpp"
+#include "dlp/ethereum/RpcEndpoints.hpp"
 #include "dlp/tx/PostgresTransactionStore.hpp"
 #include "dlp/tx/TransactionRpc.hpp"
 #include "dlp/tx/TxManager.hpp"
@@ -23,10 +28,10 @@ void Stop(int)
     running.store(false);
 }
 
-[[nodiscard]] std::string EnvironmentOrDefault(const char* name, const char* fallback)
+[[nodiscard]] std::string EnvironmentOrDefault(const char* name, std::string fallback)
 {
     const auto* value = std::getenv(name);
-    return value == nullptr || *value == '\0' ? std::string{fallback} : std::string{value};
+    return value == nullptr || *value == '\0' ? std::move(fallback) : std::string{value};
 }
 
 [[nodiscard]] std::string RequiredEnvironment(const char* name)
@@ -70,9 +75,23 @@ int main(int argc, char* argv[])
         dlp::tx::PostgresTransactionStore store{
             EnvironmentOrDefault("DLP_DATABASE_URL", "postgresql://dlp:dlp@127.0.0.1:5432/dlp")
         };
-        dlp::tx::RpcTransactionClient rpc{
-            EnvironmentOrDefault("DLP_RPC_URL", "http://127.0.0.1:8545")
-        };
+        const auto defaultRpc = EnvironmentOrDefault(
+            "DLP_RPC_URL",
+            "http://127.0.0.1:8545"
+        );
+        const auto primaryRpc = EnvironmentOrDefault("DLP_RPC_PRIMARY_URL", defaultRpc);
+        auto broadcastRpcs = dlp::ethereum::ParseRpcEndpoints(
+            EnvironmentOrDefault("DLP_RPC_BROADCAST_URLS", "")
+        );
+        auto transactionRpcs = dlp::ethereum::MergeRpcEndpoints(
+            primaryRpc,
+            std::move(broadcastRpcs)
+        );
+        auto additionalRpcs = std::vector<std::string>(
+            std::next(transactionRpcs.begin()),
+            transactionRpcs.end()
+        );
+        dlp::tx::RpcTransactionClient rpc{transactionRpcs.front(), std::move(additionalRpcs)};
         dlp::ethereum::Secp256k1Signer signer{RequiredEnvironment("DLP_OPERATOR_PRIVATE_KEY")};
         dlp::tx::TxManager manager{
             store,

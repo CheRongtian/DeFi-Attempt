@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-一个使用 Solidity 开发的超额抵押借贷协议，包含 Ethereum RPC、Reorg-aware Indexer、风险扫描、交易管理、自动清算，以及由 PostgreSQL 提供数据的 REST API 等 C++ 服务。智能合约使用 Foundry，C++ 组件使用 CMake 和 CTest 编译与验证。
+一个使用 Solidity 开发的超额抵押借贷协议，包含索引、风险扫描、交易管理、自动清算和 PostgreSQL REST API 等 C++20 服务。Go Oracle Coordinator 通过 Leader Election 和数据库 Fencing 聚合并发布价格。完整系统可通过 Docker Compose 或本地 kind 集群运行，并按请求用途进行 RPC 故障切换。
 
 ## 项目结构
 
@@ -58,6 +58,7 @@ DeFi/
 │   │   │   ├── Keccak.hpp
 │   │   │   ├── ProtocolAbi.hpp
 │   │   │   ├── RpcClient.hpp
+│   │   │   ├── RpcEndpoints.hpp
 │   │   │   ├── Uint256.hpp
 │   │   │   └── Uint256Math.hpp
 │   │   ├── smoke/
@@ -69,6 +70,7 @@ DeFi/
 │   │   │   ├── Keccak.cpp
 │   │   │   ├── ProtocolAbi.cpp
 │   │   │   ├── RpcClient.cpp
+│   │   │   ├── RpcEndpoints.cpp
 │   │   │   ├── Uint256.cpp
 │   │   │   └── Uint256Math.cpp
 │   │   ├── tests/
@@ -78,9 +80,14 @@ DeFi/
 │   │   │   ├── KeccakTests.cpp
 │   │   │   ├── ProtocolAbiTests.cpp
 │   │   │   ├── RpcClientIntegrationTests.cpp
+│   │   │   ├── RpcEndpointsTests.cpp
 │   │   │   ├── Uint256Tests.cpp
 │   │   │   └── Uint256MathTests.cpp
 │   │   └── CMakeLists.txt
+│   ├── messaging/
+│   │   ├── include/dlp/messaging/
+│   │   ├── src/
+│   │   └── tests/
 │   ├── indexer/
 │   │   ├── include/dlp/indexer/
 │   │   ├── src/
@@ -110,16 +117,37 @@ DeFi/
 │       ├── 004_create_positions.sql
 │       ├── 005_create_markets.sql
 │       ├── 006_create_liquidations.sql
-│       └── 007_create_tx_jobs.sql
+│       ├── 007_create_tx_jobs.sql
+│       ├── 008_create_outbox_events.sql
+│       ├── 009_create_liquidation_jobs.sql
+│       └── 010_create_oracle_publications.sql
+├── go/
+│   └── oracle-coordinator/
+│       ├── cmd/oracle-coordinator/
+│       ├── internal/oracle/
+│       ├── go.mod
+│       └── go.sum
+├── infrastructure/
+│   └── rpc-proxy/
+├── k8s/
+│   ├── applications.yaml
+│   ├── infrastructure.yaml
+│   ├── kind-config.yaml
+│   └── migrations-job.yaml
 ├── scripts/
 │   ├── create-liquidation-scenario.sh
 │   ├── deploy-local.sh
-│   └── run-local.sh
+│   ├── run-containers.sh
+│   ├── run-kind.sh
+│   ├── run-local.sh
+│   └── scale-kind.sh
 ├── tests/
 │   └── golden/
 │       └── risk_vectors.json
 ├── .gitignore
 ├── CMakeLists.txt
+├── Dockerfile
+├── compose.apps.yaml
 ├── compose.yaml
 ├── README.md
 └── README.zh-CN.md
@@ -131,8 +159,10 @@ DeFi/
 - Bash 或 Zsh
 - `curl`
 - 支持 C++20 的编译器和 CMake 3.20 或更高版本
+- Go 1.25 或更高版本
 - Boost 1.74 或更高版本、nlohmann/json 3.10 或更高版本、GoogleTest、libpq 和 libpqxx 8
 - Docker 和 Docker Compose
+- 用于 Kubernetes 部署的 `kubectl` 与 kind
 - Foundry 与 Anvil，用于本地部署和 RPC 集成测试
 - 可用的网络连接，用于安装 Foundry、下载 Solc，以及首次配置 CMake 时获取固定版本的 Ethereum Keccak 依赖
 
@@ -238,6 +268,14 @@ ctest --test-dir build --output-on-failure \
 -R RpcChainClientIntegrationTests
 ```
 
+### Go
+
+```bash
+cd go/oracle-coordinator
+go mod tidy
+go test ./...
+```
+
 ## 本地运行
 
 完成 C++ 编译后，通过一条命令启动 PostgreSQL、Anvil、部署合约，并运行 Indexer、Liquidator 和 API Server：
@@ -265,6 +303,27 @@ curl -sS http://127.0.0.1:18080/protocol/stats
 ```
 
 Indexer 追上链头后，该场景会产生五次部分清算、耗尽借款人的抵押物，并将剩余债务记录为坏账。按 `Ctrl+C` 会停止 C++ 服务及脚本启动的 Anvil；PostgreSQL 容器会保留到下一次重置。
+
+## 使用 kind 运行
+
+构建服务镜像、创建全新 kind 集群、部署合约、执行数据库迁移并启动完整系统：
+
+```bash
+./scripts/run-kind.sh --clean
+```
+
+API 地址为 `http://127.0.0.1:18080`。如果首次拉取镜像较慢导致启动中断，可以保留当前集群继续执行：
+
+```bash
+./scripts/run-kind.sh
+```
+
+查看部署状态和当前 Oracle Leader：
+
+```bash
+kubectl --context kind-dlp get pods -n dlp
+kubectl --context kind-dlp get lease oracle-coordinator -n dlp
+```
 
 ## 已实现功能
 
@@ -306,7 +365,7 @@ contracts/test/MockWETH.t.sol
 
 ### 价格预言机
 
-由管理员维护的价格预言机，价格使用 8 位小数，并支持资产注册、更新时间记录和过期价格校验。
+价格使用 8 位小数，支持资产注册、过期价格校验、管理员更新和受角色控制的聚合价格发布。聚合报告必须使用有效时间戳和严格递增的 roundId。
 
 文件：
 
@@ -439,16 +498,19 @@ cpp/risk-engine/
 tests/golden/risk_vectors.json
 ```
 
-### 交易管理与自动清算
+### 事务消息与租约清算
 
-持久化 Tx Manager 负责签名 EIP-1559 交易、结合 RPC 与 PostgreSQL 状态分配 nonce、跟踪提交和 receipt、替换停滞交易，并记录最终确认或 Reorg。单实例 Liquidator 会使用最新链上状态重新验证候选仓位、检查收益，并通过 Tx Manager 提交受限清算交易。
+PostgreSQL Transactional Outbox 记录由 Publisher 发送到 NATS JetStream，并由消费者幂等处理。清算任务使用数据库 Lease 和 Fencing Token，使多个 Liquidator 副本能够安全领取任务。持久化 Tx Manager 负责签名 EIP-1559 交易、恢复 nonce、替换停滞交易，并记录最终确认或 Reorg。
 
 文件：
 
 ```text
 cpp/tx-manager/
 cpp/liquidator/
+cpp/messaging/
 database/migrations/007_create_tx_jobs.sql
+database/migrations/008_create_outbox_events.sql
+database/migrations/009_create_liquidation_jobs.sql
 scripts/create-liquidation-scenario.sh
 ```
 
@@ -471,4 +533,34 @@ POST /risk/simulate
 
 ```text
 cpp/api-server/
+```
+
+### 容器与 Kubernetes
+
+多阶段镜像用于打包 C++ 和 Go 服务。Docker Compose 提供容器化本地环境，kind 通过 Kubernetes manifests 运行 PostgreSQL、JetStream、Anvil、两个 RPC Proxy、全部应用服务和多副本 Worker。
+
+文件：
+
+```text
+Dockerfile
+compose.apps.yaml
+k8s/
+scripts/run-containers.sh
+scripts/run-kind.sh
+scripts/scale-kind.sh
+```
+
+### 高可用 Oracle 与 RPC 路由
+
+三个模拟价格 Provider 通过中位数聚合。三个 Go Oracle Coordinator 副本使用 Kubernetes Lease 选举唯一发布者，并通过 PostgreSQL Fencing、单调递增 roundId 和幂等交易任务保护发布流程。私钥仍只由 C++ Tx Manager 持有。
+
+RPC 根据请求用途分别路由：Indexer 使用 Active/Failover 并校验 chainId 与 canonical block hash；API 对只读请求执行 Round Robin；Tx Manager 优先从主 RPC 获取 pending nonce，并向两个端点广播完全相同的已签名交易。
+
+文件：
+
+```text
+go/oracle-coordinator/
+database/migrations/010_create_oracle_publications.sql
+infrastructure/rpc-proxy/
+cpp/common/include/dlp/ethereum/RpcEndpoints.hpp
 ```

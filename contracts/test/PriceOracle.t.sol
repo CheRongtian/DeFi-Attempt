@@ -26,6 +26,7 @@ contract PriceOracleTest {
     uint256 private constant WETH_PRICE = 3_000e8;
     uint256 private constant USDC_PRICE = 1e8;
     address private constant UNAUTHORIZED = address(0xBEEF);
+    address private constant PUBLISHER = address(0xCAFE);
 
     PriceOracle private oracle;
     MockWETH private weth;
@@ -110,6 +111,59 @@ contract PriceOracleTest {
         oracle.setPrice(address(weth), WETH_PRICE);
 
         assert(!oracle.isPriceValid(address(weth)));
+    }
+
+    function testAuthorizedPublisherCanPublishNewRound() public {
+        oracle.grantRole(oracle.PUBLISHER_ROLE(), PUBLISHER);
+
+        VM.prank(PUBLISHER);
+        oracle.publishPrice(address(weth), WETH_PRICE, START_TIME, 1);
+
+        assert(oracle.getPrice(address(weth)) == WETH_PRICE);
+        assert(oracle.latestRoundIds(address(weth)) == 1);
+    }
+
+    function testUnauthorizedPublisherRejected() public {
+        VM.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                UNAUTHORIZED,
+                oracle.PUBLISHER_ROLE()
+            )
+        );
+        VM.prank(UNAUTHORIZED);
+        oracle.publishPrice(address(weth), WETH_PRICE, START_TIME, 1);
+    }
+
+    function testPublisherRejectsOldAndDuplicateRounds() public {
+        oracle.grantRole(oracle.PUBLISHER_ROLE(), PUBLISHER);
+        VM.prank(PUBLISHER);
+        oracle.publishPrice(address(weth), WETH_PRICE, START_TIME, 2);
+
+        VM.expectRevert(abi.encodeWithSelector(PriceOracle.InvalidRound.selector, 2, 2));
+        VM.prank(PUBLISHER);
+        oracle.publishPrice(address(weth), WETH_PRICE, START_TIME, 2);
+
+        VM.expectRevert(abi.encodeWithSelector(PriceOracle.InvalidRound.selector, 2, 1));
+        VM.prank(PUBLISHER);
+        oracle.publishPrice(address(weth), WETH_PRICE, START_TIME, 1);
+    }
+
+    function testPublisherRejectsFutureAndStaleReports() public {
+        oracle.grantRole(oracle.PUBLISHER_ROLE(), PUBLISHER);
+
+        VM.expectRevert(
+            abi.encodeWithSelector(PriceOracle.InvalidReportTimestamp.selector, START_TIME + 1)
+        );
+        VM.prank(PUBLISHER);
+        oracle.publishPrice(address(weth), WETH_PRICE, START_TIME + 1, 1);
+
+        VM.warp(START_TIME + MAX_PRICE_AGE + 1);
+        VM.expectRevert(
+            abi.encodeWithSelector(PriceOracle.StaleReport.selector, address(weth), START_TIME)
+        );
+        VM.prank(PUBLISHER);
+        oracle.publishPrice(address(weth), WETH_PRICE, START_TIME, 1);
     }
 
     function testZeroPriceRejectedWithoutOverwritingExistingPrice() public {

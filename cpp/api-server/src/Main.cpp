@@ -1,12 +1,15 @@
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <iostream>
 #include <string>
+#include <utility>
 
 #include "dlp/api/ApiChain.hpp"
 #include "dlp/api/ApiService.hpp"
 #include "dlp/api/ApiStore.hpp"
 #include "dlp/api/HttpServer.hpp"
+#include "dlp/ethereum/RpcEndpoints.hpp"
 #include "dlp/risk/PostgresRiskRepository.hpp"
 #include "dlp/risk/RiskEngine.hpp"
 
@@ -30,10 +33,17 @@ int main()
             "postgresql://dlp:dlp@127.0.0.1:5432/dlp"
         );
         const auto rpcUrl = EnvironmentOrDefault("DLP_RPC_URL", "http://127.0.0.1:8545");
+        auto readEndpoints = dlp::ethereum::ParseRpcEndpoints(
+            EnvironmentOrDefault("DLP_READ_RPC_URLS", "")
+        );
+        if(readEndpoints.empty())
+        {
+            readEndpoints.push_back(rpcUrl);
+        }
         const auto apiAddress = EnvironmentOrDefault("DLP_API_ADDRESS", "127.0.0.1");
         const auto apiPort = EnvironmentOrDefault("DLP_API_PORT", "8080");
-        dlp::api::RpcApiChain chain{rpcUrl};
-        const auto chainId = dlp::ethereum::RpcClient{rpcUrl}.GetChainId();
+        dlp::api::RpcApiChain chain{std::move(readEndpoints)};
+        const auto chainId = chain.GetChainId();
         dlp::risk::PostgresRiskRepository riskRepository{databaseUrl};
         dlp::risk::RiskEngine riskEngine{riskRepository, chainId};
         dlp::api::PostgresApiStore apiStore{databaseUrl};

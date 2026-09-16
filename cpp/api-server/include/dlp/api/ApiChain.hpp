@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "dlp/ethereum/RpcClient.hpp"
 
@@ -20,6 +21,7 @@ class RpcApiChain final : public ApiChain
 {
 public:
     explicit RpcApiChain(std::string endpoint);
+    explicit RpcApiChain(std::vector<std::string> endpoints);
     ~RpcApiChain() override;
 
     RpcApiChain(RpcApiChain&& other) noexcept;
@@ -29,6 +31,7 @@ public:
     RpcApiChain& operator=(const RpcApiChain&) = delete;
 
     [[nodiscard]] std::uint64_t GetBlockNumber() const override;
+    [[nodiscard]] ethereum::Uint256 GetChainId() const;
 
 private:
     class Impl;

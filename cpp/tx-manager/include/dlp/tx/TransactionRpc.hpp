@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "dlp/ethereum/RpcClient.hpp"
 #include "dlp/tx/TxTypes.hpp"
@@ -40,6 +41,7 @@ class RpcTransactionClient final : public TransactionRpc
 {
 public:
     explicit RpcTransactionClient(std::string endpoint);
+    RpcTransactionClient(std::string primaryEndpoint, std::vector<std::string> additionalEndpoints);
     ~RpcTransactionClient() override;
 
     RpcTransactionClient(RpcTransactionClient&& other) noexcept;

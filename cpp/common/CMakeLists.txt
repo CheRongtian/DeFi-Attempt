@@ -42,6 +42,7 @@ add_library(
     src/ProtocolAbi.cpp
     src/Rlp.cpp
     src/RpcClient.cpp
+    src/RpcEndpoints.cpp
     src/Transaction.cpp
     src/Uint256.cpp
     src/Uint256Math.cpp
@@ -93,6 +94,7 @@ if(BUILD_TESTING)
         tests/ProtocolAbiTests.cpp
         tests/RlpTests.cpp
         tests/RpcClientIntegrationTests.cpp
+        tests/RpcEndpointsTests.cpp
         tests/TransactionTests.cpp
         tests/Uint256Tests.cpp
         tests/Uint256MathTests.cpp

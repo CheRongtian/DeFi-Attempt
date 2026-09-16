@@ -56,6 +56,7 @@ LIQUIDATION_MANAGER_ADDRESS=$(deploy_contract \
 
 OPERATOR_ADDRESS=$(cast wallet address --private-key "$ANVIL_PRIVATE_KEY_VALUE")
 LIQUIDATION_ROLE=$(cast call "$POOL_ADDRESS" "LIQUIDATION_ROLE()(bytes32)" --rpc-url "$RPC_URL")
+PUBLISHER_ROLE=$(cast call "$ORACLE_ADDRESS" "PUBLISHER_ROLE()(bytes32)" --rpc-url "$RPC_URL")
 
 cast send "$ORACLE_ADDRESS" "registerAsset(address,uint256)" "$WETH_ADDRESS" 86400 \
     --rpc-url "$RPC_URL" --private-key "$ANVIL_PRIVATE_KEY_VALUE" >/dev/null
@@ -64,6 +65,8 @@ cast send "$ORACLE_ADDRESS" "registerAsset(address,uint256)" "$USDC_ADDRESS" 864
 cast send "$ORACLE_ADDRESS" "setPrice(address,uint256)" "$WETH_ADDRESS" 300000000000 \
     --rpc-url "$RPC_URL" --private-key "$ANVIL_PRIVATE_KEY_VALUE" >/dev/null
 cast send "$ORACLE_ADDRESS" "setPrice(address,uint256)" "$USDC_ADDRESS" 100000000 \
+    --rpc-url "$RPC_URL" --private-key "$ANVIL_PRIVATE_KEY_VALUE" >/dev/null
+cast send "$ORACLE_ADDRESS" "grantRole(bytes32,address)" "$PUBLISHER_ROLE" "$OPERATOR_ADDRESS" \
     --rpc-url "$RPC_URL" --private-key "$ANVIL_PRIVATE_KEY_VALUE" >/dev/null
 cast send "$POOL_ADDRESS" "grantRole(bytes32,address)" "$LIQUIDATION_ROLE" "$LIQUIDATION_MANAGER_ADDRESS" \
     --rpc-url "$RPC_URL" --private-key "$ANVIL_PRIVATE_KEY_VALUE" >/dev/null

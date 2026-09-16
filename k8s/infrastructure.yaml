@@ -202,3 +202,126 @@ spec:
                 - http://127.0.0.1:8545
             initialDelaySeconds: 2
             periodSeconds: 2
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rpc-proxy
+  namespace: dlp
+data:
+  nginx.conf: |
+    events {}
+
+    http {
+        upstream ethereum_rpc {
+            server anvil:8545;
+        }
+
+        server {
+            listen 8545;
+
+            location / {
+                proxy_pass http://ethereum_rpc;
+                proxy_http_version 1.1;
+                proxy_set_header Connection "";
+            }
+        }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rpc-a
+  namespace: dlp
+spec:
+  selector:
+    app: rpc-a
+  ports:
+    - name: rpc
+      port: 8545
+      targetPort: rpc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rpc-a
+  namespace: dlp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rpc-a
+  template:
+    metadata:
+      labels:
+        app: rpc-a
+    spec:
+      containers:
+        - name: rpc-proxy
+          image: nginx:1.29-alpine
+          ports:
+            - name: rpc
+              containerPort: 8545
+          readinessProbe:
+            tcpSocket:
+              port: rpc
+            initialDelaySeconds: 1
+            periodSeconds: 2
+          volumeMounts:
+            - name: configuration
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+      volumes:
+        - name: configuration
+          configMap:
+            name: rpc-proxy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rpc-b
+  namespace: dlp
+spec:
+  selector:
+    app: rpc-b
+  ports:
+    - name: rpc
+      port: 8545
+      targetPort: rpc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rpc-b
+  namespace: dlp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rpc-b
+  template:
+    metadata:
+      labels:
+        app: rpc-b
+    spec:
+      containers:
+        - name: rpc-proxy
+          image: nginx:1.29-alpine
+          ports:
+            - name: rpc
+              containerPort: 8545
+          readinessProbe:
+            tcpSocket:
+              port: rpc
+            initialDelaySeconds: 1
+            periodSeconds: 2
+          volumeMounts:
+            - name: configuration
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+      volumes:
+        - name: configuration
+          configMap:
+            name: rpc-proxy

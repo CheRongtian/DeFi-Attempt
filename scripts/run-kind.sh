@@ -9,6 +9,7 @@ NAMESPACE=dlp
 ENV_FILE="$PROJECT_ROOT/.env.kind"
 ANVIL_PORT=8546
 HOST_RPC_URL="http://127.0.0.1:$ANVIL_PORT"
+WAIT_TIMEOUT=600s
 CLEAN=false
 
 IMAGES=(
@@ -16,6 +17,7 @@ IMAGES=(
     outbox-publisher
     risk-engine
     tx-manager
+    oracle-coordinator
     liquidator
     api-server
 )
@@ -67,9 +69,15 @@ done
 
 kube apply -f "$PROJECT_ROOT/k8s/namespace.yaml"
 kube apply -f "$PROJECT_ROOT/k8s/infrastructure.yaml"
-kube rollout status statefulset/postgres -n "$NAMESPACE" --timeout=180s
-kube rollout status statefulset/nats -n "$NAMESPACE" --timeout=180s
-kube rollout status deployment/anvil -n "$NAMESPACE" --timeout=180s
+if [[ $cluster_exists == true ]]
+then
+    kube rollout restart deployment/rpc-a deployment/rpc-b -n "$NAMESPACE"
+fi
+kube rollout status statefulset/postgres -n "$NAMESPACE" --timeout="$WAIT_TIMEOUT"
+kube rollout status statefulset/nats -n "$NAMESPACE" --timeout="$WAIT_TIMEOUT"
+kube rollout status deployment/anvil -n "$NAMESPACE" --timeout="$WAIT_TIMEOUT"
+kube rollout status deployment/rpc-a -n "$NAMESPACE" --timeout="$WAIT_TIMEOUT"
+kube rollout status deployment/rpc-b -n "$NAMESPACE" --timeout="$WAIT_TIMEOUT"
 
 kube create configmap dlp-migrations \
     --namespace "$NAMESPACE" \
@@ -79,7 +87,7 @@ kube create configmap dlp-migrations \
 kube delete job database-migrations -n "$NAMESPACE" --ignore-not-found
 kube apply -f "$PROJECT_ROOT/k8s/migrations-job.yaml"
 kube wait --for=condition=complete job/database-migrations \
-    -n "$NAMESPACE" --timeout=180s
+    -n "$NAMESPACE" --timeout="$WAIT_TIMEOUT"
 
 rpc_ready=false
 for ((attempt = 0; attempt < 30; ++attempt))
@@ -118,11 +126,7 @@ fi
 
 if [[ $deployment_ready != true ]]
 then
-    if [[ $cluster_exists == true ]]
-    then
-        printf 'The existing kind cluster has no matching contract deployment. Rerun with --clean.\n' >&2
-        exit 1
-    fi
+    printf 'Deploying contracts into the current kind chain.\n'
     "$PROJECT_ROOT/scripts/deploy-local.sh" "$HOST_RPC_URL" "$ENV_FILE"
 else
     printf 'Using contracts from .env.kind.\n'
@@ -152,17 +156,17 @@ kube apply -f "$PROJECT_ROOT/k8s/applications.yaml"
 
 if [[ $cluster_exists == true ]]
 then
-    for deployment in indexer outbox-publisher risk-engine tx-manager liquidator api-server
+    for deployment in indexer outbox-publisher risk-engine tx-manager oracle-coordinator liquidator api-server
     do
         kube rollout restart "deployment/$deployment" -n "$NAMESPACE"
     done
 fi
 
-for deployment in indexer outbox-publisher risk-engine tx-manager liquidator api-server
+for deployment in indexer outbox-publisher risk-engine tx-manager oracle-coordinator liquidator api-server
 do
-    kube rollout status "deployment/$deployment" -n "$NAMESPACE" --timeout=180s
+    kube rollout status "deployment/$deployment" -n "$NAMESPACE" --timeout="$WAIT_TIMEOUT"
 done
 
-printf '\nThe single-replica kind deployment is running.\n'
+printf '\nThe kind deployment is running with three Oracle Coordinator replicas.\n'
 printf '  API: http://127.0.0.1:18080\n'
 printf '  Scale: ./scripts/scale-kind.sh\n'
