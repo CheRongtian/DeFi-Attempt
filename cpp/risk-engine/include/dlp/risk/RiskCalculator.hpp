@@ -15,6 +15,8 @@ public:
     [[nodiscard]] static const ethereum::Uint256& Wad();
     [[nodiscard]] static const ethereum::Uint256& Ray();
     [[nodiscard]] static const ethereum::Uint256& MaximumUint256();
+    [[nodiscard]] static const ethereum::Uint256& LtvBasisPoints();
+    [[nodiscard]] static const ethereum::Uint256& LiquidationThresholdBasisPoints();
 
     [[nodiscard]] static ethereum::Uint256 DebtAtIndex(
         const ethereum::Uint256& scaledDebt,

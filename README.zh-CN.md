@@ -130,6 +130,14 @@ DeFi/
 │       ├── 008_create_outbox_events.sql
 │       ├── 009_create_liquidation_jobs.sql
 │       └── 010_create_oracle_publications.sql
+├── frontend/
+│   ├── src/
+│   │   ├── api/
+│   │   ├── components/
+│   │   └── hooks/
+│   ├── .env.example
+│   ├── package.json
+│   └── vite.config.ts
 ├── go/
 │   └── oracle-coordinator/
 │       ├── cmd/oracle-coordinator/
@@ -149,7 +157,9 @@ DeFi/
 │   └── prometheus/
 ├── scripts/
 │   ├── create-liquidation-scenario.sh
+│   ├── configure-frontend.sh
 │   ├── deploy-local.sh
+│   ├── prepare-frontend-demo.sh
 │   ├── run-containers.sh
 │   ├── run-kind.sh
 │   ├── run-local.sh
@@ -176,6 +186,7 @@ DeFi/
 - `curl`
 - Python 3，用于解析可观测性验收结果
 - 支持 C++20 的编译器和 CMake 3.20 或更高版本
+- Node.js 22 或更高版本及 npm
 - Go 1.25 或更高版本
 - Boost 1.74 或更高版本、nlohmann/json 3.10 或更高版本、GoogleTest、libpq 和 libpqxx 8
 - Docker 和 Docker Compose
@@ -293,6 +304,15 @@ go mod tidy
 go test ./...
 ```
 
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run build
+npm test
+```
+
 ## 本地运行
 
 完成 C++ 编译后，通过一条命令启动 PostgreSQL、Anvil、部署合约，并运行 Indexer、Liquidator 和 API Server：
@@ -320,6 +340,52 @@ curl -sS http://127.0.0.1:18080/protocol/stats
 ```
 
 Indexer 追上链头后，该场景会产生五次部分清算、耗尽借款人的抵押物，并将剩余债务记录为坏账。按 `Ctrl+C` 会停止 C++ 服务及脚本启动的 Anvil；PostgreSQL 容器会保留到下一次重置。
+
+### 运行 Frontend Demo
+
+保持 `./scripts/run-local.sh` 运行。在第二个终端中为本地演示账户准备资产，根据当前部署地址生成 Vite 配置，然后启动 Dashboard：
+
+```bash
+./scripts/prepare-frontend-demo.sh
+
+cd frontend
+npm install
+npm run dev
+```
+
+打开 `http://127.0.0.1:5173`。在钱包中添加 RPC URL 为 `http://127.0.0.1:8546`、Chain ID 为 `31337` 的本地 Anvil 网络。准备脚本会向 Alice（`0x7099…79C8`）发放 20 WETH，向 Charlie（`0x90F7…b906`）发放 100,000 USDC。两个账户使用 Anvil 公开开发密钥，只能用于可随时丢弃的本地链。
+
+将以下公开且仅限 Anvil 本地开发的密钥导入钱包：
+
+```text
+Alice:   0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
+Charlie: 0x7c852118294b873bd7ebd81f49d5e1ac554b1f4a4392e31f5eac68e54b70
+```
+
+完整演示流程为：
+
+```text
+Charlie 连接钱包并供应 50,000 USDC
+→ Alice 连接钱包并供应 10 WETH
+→ Alice 借出 20,000 USDC
+→ Position 显示抵押物、存款、债务与 Health Factor
+→ Oracle 价格变化后，页面更新索引后的 Health Factor
+→ Liquidator 执行并记录清算
+→ Alice 偿还剩余 USDC 债务（输入 10,001 可覆盖累计利息）
+→ Alice 最多提取 5 WETH
+```
+
+在另一个终端中将 WETH 价格降至 `$2,400`：
+
+```bash
+source .env.local
+cast send "$DLP_ORACLE_ADDRESS" "setPrice(address,uint256)" \
+  "$DLP_WETH_ADDRESS" 240000000000 \
+  --rpc-url "$DLP_RPC_URL" \
+  --private-key "$DLP_OPERATOR_PRIVATE_KEY"
+```
+
+Market、Position、Liquidations、System 和 Risk 页面通过 C++ API 读取索引状态。Supply、Borrow、Repay 和 Withdraw 交易均由钱包签名后直接发送给 Solidity 协议。页面会分别显示链上 Receipt 已确认和 Indexer 已同步两种状态。
 
 ## 使用 kind 运行
 
@@ -605,4 +671,16 @@ cpp/observability/
 observability/
 k8s/observability.yaml
 scripts/run-observability-tests.sh
+```
+
+### Frontend 协议控制台
+
+React 与 TypeScript Dashboard 通过 wagmi 和 viem 连接浏览器钱包，展示已索引的市场、仓位、清算历史、后端新鲜度和 C++ 确定性风险模拟结果。用户交易先在钱包中批准和签名，再直接发送到 Solidity 协议。
+
+文件：
+
+```text
+frontend/
+scripts/configure-frontend.sh
+scripts/prepare-frontend-demo.sh
 ```

@@ -4,6 +4,9 @@
 build
 cmake-build-*
 artifacts
+frontend/node_modules
+frontend/dist
+frontend/coverage
 contracts/broadcast
 contracts/cache
 contracts/out

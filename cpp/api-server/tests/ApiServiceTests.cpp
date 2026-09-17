@@ -88,6 +88,13 @@ public:
     {
         return ProtocolStats{1, 0, ethereum::Uint256{1}, ethereum::Uint256{2}, ethereum::Uint256{3}, {}, {}};
     }
+    [[nodiscard]] ethereum::Uint256 LoadUsdcSupply(
+        const ethereum::Uint256&,
+        const ethereum::Address&
+    ) const override
+    {
+        return ethereum::Uint256{7'000'000};
+    }
 };
 
 class MemoryChain final : public ApiChain
@@ -140,6 +147,30 @@ TEST(ApiServiceTests, SimulatesRiskWithDeterministicIntegerInputs)
     ASSERT_EQ(response.status, 200U);
     const auto result = nlohmann::json::parse(response.body);
     EXPECT_EQ(result.at("data").at("healthFactorWad"), "800000000000000000");
+}
+
+TEST(ApiServiceTests, IncludesMarketConfigurationAndUsdcSupplyPosition)
+{
+    MemoryRiskRepository repository;
+    risk::RiskEngine riskEngine{repository, ethereum::Uint256{31337}};
+    MemoryApiStore store;
+    MemoryChain chain;
+    const ApiService service{riskEngine, store, chain, ethereum::Uint256{31337}};
+
+    const auto marketResponse = service.Handle(ApiRequest{"GET", "/markets", {}});
+    ASSERT_EQ(marketResponse.status, 200U);
+    const auto market = nlohmann::json::parse(marketResponse.body).at("data").front();
+    EXPECT_EQ(market.at("ltvBps"), "7500");
+    EXPECT_EQ(market.at("liquidationThresholdBps"), "8000");
+
+    const auto positionResponse = service.Handle(ApiRequest{
+        "GET",
+        "/positions/" + Address(5).ToHex(),
+        {}
+    });
+    ASSERT_EQ(positionResponse.status, 200U);
+    const auto position = nlohmann::json::parse(positionResponse.body).at("data");
+    EXPECT_EQ(position.at("usdcSupply"), "7000000");
 }
 
 }

@@ -130,6 +130,14 @@ DeFi/
 │       ├── 008_create_outbox_events.sql
 │       ├── 009_create_liquidation_jobs.sql
 │       └── 010_create_oracle_publications.sql
+├── frontend/
+│   ├── src/
+│   │   ├── api/
+│   │   ├── components/
+│   │   └── hooks/
+│   ├── .env.example
+│   ├── package.json
+│   └── vite.config.ts
 ├── go/
 │   └── oracle-coordinator/
 │       ├── cmd/oracle-coordinator/
@@ -149,7 +157,9 @@ DeFi/
 │   └── prometheus/
 ├── scripts/
 │   ├── create-liquidation-scenario.sh
+│   ├── configure-frontend.sh
 │   ├── deploy-local.sh
+│   ├── prepare-frontend-demo.sh
 │   ├── run-containers.sh
 │   ├── run-kind.sh
 │   ├── run-local.sh
@@ -176,6 +186,7 @@ DeFi/
 - `curl`
 - Python 3 for the observability result parser
 - A C++20 compiler and CMake 3.20 or newer
+- Node.js 22 or newer with npm
 - Go 1.25 or newer
 - Boost 1.74 or newer, nlohmann/json 3.10 or newer, GoogleTest, libpq, and libpqxx 8
 - Docker with Docker Compose
@@ -293,6 +304,15 @@ go mod tidy
 go test ./...
 ```
 
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run build
+npm test
+```
+
 ## Run Locally
 
 After building the C++ targets, start PostgreSQL, Anvil, deploy the contracts, and run the Indexer, Liquidator, and API Server with one command:
@@ -320,6 +340,52 @@ curl -sS http://127.0.0.1:18080/protocol/stats
 ```
 
 After the Indexer catches up, the scenario produces five partial liquidations, exhausts the borrower's collateral, and records the remaining debt as bad debt. Press `Ctrl+C` to stop the C++ services and the Anvil process started by the runner. The PostgreSQL container remains available until the next reset.
+
+### Run the Frontend Demo
+
+Keep `./scripts/run-local.sh` running. In a second terminal, fund the local demo accounts, generate the Vite environment from the deployed contract addresses, and start the dashboard:
+
+```bash
+./scripts/prepare-frontend-demo.sh
+
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`. Add the local Anvil network to the wallet with RPC URL `http://127.0.0.1:8546` and chain ID `31337`. The preparation script funds Alice (`0x7099…79C8`) with 20 WETH and Charlie (`0x90F7…b906`) with 100,000 USDC. The accounts use Anvil's public development keys and must never be used outside a disposable local chain.
+
+Import these public Anvil-only development keys into the wallet:
+
+```text
+Alice:   0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
+Charlie: 0x7c852118294b873bd7ebd81f49d5e1ac554b1f4a4392e31f5eac68e54b70
+```
+
+The demo flow is:
+
+```text
+Charlie connects and supplies 50,000 USDC
+→ Alice connects and supplies 10 WETH
+→ Alice borrows 20,000 USDC
+→ Position shows collateral, supplied liquidity, debt, and Health Factor
+→ the Oracle price changes and the indexed Health Factor updates
+→ the Liquidator records the liquidation
+→ Alice repays the remaining USDC debt (entering 10,001 covers accrued interest)
+→ Alice withdraws up to 5 WETH
+```
+
+To lower WETH to `$2,400` from another terminal:
+
+```bash
+source .env.local
+cast send "$DLP_ORACLE_ADDRESS" "setPrice(address,uint256)" \
+  "$DLP_WETH_ADDRESS" 240000000000 \
+  --rpc-url "$DLP_RPC_URL" \
+  --private-key "$DLP_OPERATOR_PRIVATE_KEY"
+```
+
+The Market, Position, Liquidations, System, and Risk pages read indexed state through the C++ API. Supply, borrow, repay, and withdraw remain wallet-signed Solidity transactions. A confirmed receipt and Indexer synchronization are shown as separate states.
 
 ## Run with kind
 
@@ -605,4 +671,16 @@ cpp/observability/
 observability/
 k8s/observability.yaml
 scripts/run-observability-tests.sh
+```
+
+### Frontend Protocol Console
+
+The React and TypeScript dashboard connects an injected wallet through wagmi and viem. It displays indexed market and position state, liquidation history, backend freshness, and deterministic C++ risk simulations. User transactions are approved and signed in the wallet before being sent directly to the Solidity protocol.
+
+Files:
+
+```text
+frontend/
+scripts/configure-frontend.sh
+scripts/prepare-frontend-demo.sh
 ```

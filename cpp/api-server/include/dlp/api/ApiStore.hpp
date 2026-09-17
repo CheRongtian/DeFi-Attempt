@@ -23,6 +23,10 @@ public:
     [[nodiscard]] virtual ProtocolStats LoadProtocolStats(
         const ethereum::Uint256& chainId
     ) const = 0;
+    [[nodiscard]] virtual ethereum::Uint256 LoadUsdcSupply(
+        const ethereum::Uint256& chainId,
+        const ethereum::Address& user
+    ) const = 0;
 };
 
 class PostgresApiStore final : public ApiStore
@@ -43,6 +47,10 @@ public:
     ) const override;
     [[nodiscard]] ProtocolStats LoadProtocolStats(
         const ethereum::Uint256& chainId
+    ) const override;
+    [[nodiscard]] ethereum::Uint256 LoadUsdcSupply(
+        const ethereum::Uint256& chainId,
+        const ethereum::Address& user
     ) const override;
 
 private:

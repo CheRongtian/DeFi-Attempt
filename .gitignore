@@ -6,6 +6,9 @@ contracts/out/
 contracts/broadcast/
 build/
 cmake-build-*/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
 artifacts/recovery/
 artifacts/observability/
 go/oracle-coordinator/oracle-coordinator

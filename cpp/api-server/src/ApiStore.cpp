@@ -8,6 +8,8 @@
 #include <pqxx/pqxx>
 
 #include "dlp/ethereum/Hex.hpp"
+#include "dlp/ethereum/Uint256Math.hpp"
+#include "dlp/risk/RiskCalculator.hpp"
 
 namespace dlp::api
 {
@@ -128,6 +130,35 @@ ProtocolStats PostgresApiStore::LoadProtocolStats(const ethereum::Uint256& chain
         ethereum::Uint256::FromDecimal(row["protocol_reserve"].as<std::string>()),
         ethereum::Uint256::FromDecimal(row["bad_debt"].as<std::string>())
     };
+}
+
+ethereum::Uint256 PostgresApiStore::LoadUsdcSupply(
+    const ethereum::Uint256& chainId,
+    const ethereum::Address& user
+) const
+{
+    auto connection = implementation_->Connect();
+    pqxx::read_transaction transaction{connection};
+    const auto rows = transaction.exec(
+        R"SQL(
+            SELECT p.scaled_usdc_supply, m.liquidity_index
+            FROM positions p
+            JOIN markets m ON m.chain_id = p.chain_id
+            WHERE p.chain_id = $1 AND p.user_address = $2
+        )SQL",
+        pqxx::params{chainId.ToDecimal(), user.ToHex()}
+    );
+    if(rows.empty())
+    {
+        return ethereum::Uint256{};
+    }
+
+    const auto& row = rows.front();
+    return ethereum::Uint256Math::MulDivDown(
+        ethereum::Uint256::FromDecimal(row["scaled_usdc_supply"].as<std::string>()),
+        ethereum::Uint256::FromDecimal(row["liquidity_index"].as<std::string>()),
+        risk::RiskCalculator::Ray()
+    );
 }
 
 }

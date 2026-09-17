@@ -33,18 +33,6 @@ const Uint256& UsdcValueMultiplier()
     return value;
 }
 
-const Uint256& LtvBps()
-{
-    static const Uint256 value{7'500};
-    return value;
-}
-
-const Uint256& LiquidationThresholdBps()
-{
-    static const Uint256 value{8'000};
-    return value;
-}
-
 const Uint256& CloseFactorBps()
 {
     static const Uint256 value{5'000};
@@ -117,6 +105,18 @@ const Uint256& RiskCalculator::MaximumUint256()
     static const auto value = Uint256::FromDecimal(
         "115792089237316195423570985008687907853269984665640564039457584007913129639935"
     );
+    return value;
+}
+
+const Uint256& RiskCalculator::LtvBasisPoints()
+{
+    static const Uint256 value{7'500};
+    return value;
+}
+
+const Uint256& RiskCalculator::LiquidationThresholdBasisPoints()
+{
+    static const Uint256 value{8'000};
     return value;
 }
 
@@ -204,7 +204,7 @@ PositionRisk RiskCalculator::Evaluate(
             market.wethPrice.IsZero()
                 ? Uint256{}
                 : Uint256Math::MulDivDown(
-                    CollateralValue(position.wethCollateral, market.wethPrice), LtvBps(), Bps()
+                    CollateralValue(position.wethCollateral, market.wethPrice), LtvBasisPoints(), Bps()
                 ),
             MaximumUint256(),
             false,
@@ -230,10 +230,10 @@ PositionRisk RiskCalculator::Evaluate(
 
     const auto collateralValue = CollateralValue(position.wethCollateral, market.wethPrice);
     const auto debtValue = DebtValue(position.usdcDebt, market.usdcPrice);
-    const auto maxBorrow = Uint256Math::MulDivDown(collateralValue, LtvBps(), Bps());
+    const auto maxBorrow = Uint256Math::MulDivDown(collateralValue, LtvBasisPoints(), Bps());
     const auto adjustedCollateral = Uint256Math::MulDivDown(
         collateralValue,
-        LiquidationThresholdBps(),
+        LiquidationThresholdBasisPoints(),
         Bps()
     );
     const auto healthFactor = Uint256Math::MulDivDown(adjustedCollateral, Wad(), debtValue);

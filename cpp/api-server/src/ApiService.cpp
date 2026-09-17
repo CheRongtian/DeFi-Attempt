@@ -77,6 +77,11 @@ ApiResponse ApiService::Markets() const
             {"weth", market.weth.ToHex()},
             {"usdc", market.usdc.ToHex()},
             {"borrowIndex", market.borrowIndex.ToDecimal()},
+            {"wethDecimals", 18},
+            {"usdcDecimals", 6},
+            {"priceDecimals", 8},
+            {"ltvBps", risk::RiskCalculator::LtvBasisPoints().ToDecimal()},
+            {"liquidationThresholdBps", risk::RiskCalculator::LiquidationThresholdBasisPoints().ToDecimal()},
             {"wethPrice", market.wethPrice.ToDecimal()},
             {"usdcPrice", market.usdcPrice.ToDecimal()}
         }})},
@@ -93,13 +98,17 @@ ApiResponse ApiService::Position(std::string_view address, bool healthOnly) cons
         return JsonResponse(404, Json{{"error", "position not found"}});
     }
     const auto market = riskEngine_.LoadMarket();
-    const auto data = healthOnly
+    auto data = healthOnly
         ? Json{
             {"address", value->position.user.ToHex()},
             {"healthFactorWad", value->healthFactor.ToDecimal()},
             {"liquidatable", value->liquidatable}
         }
         : RiskJson(*value);
+    if(!healthOnly)
+    {
+        data["usdcSupply"] = store_.LoadUsdcSupply(chainId_, user).ToDecimal();
+    }
     return JsonResponse(200, Json{
         {"data", data},
         {"freshness", Freshness(market, chain_.GetBlockNumber())}
