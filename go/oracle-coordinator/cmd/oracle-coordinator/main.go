@@ -99,6 +99,7 @@ func run() error {
 	}
 	defer store.Close()
 
+	metrics := oracle.NewMetrics()
 	coordinator := oracle.NewCoordinator(
 		store,
 		[]oracle.Provider{
@@ -115,10 +116,26 @@ func run() error {
 			PublishInterval: time.Duration(publishSeconds) * time.Second,
 			LeaseDuration:   time.Duration(databaseLeaseSeconds) * time.Second,
 		},
+		metrics,
 	)
+	metricsPort, err := unsignedEnvironment("DLP_METRICS_PORT", 9107)
+	if err != nil {
+		return err
+	}
+	if err := oracle.StartMetricsServer(
+		ctx,
+		environment("DLP_METRICS_ADDRESS", "0.0.0.0"),
+		metricsPort,
+		metrics,
+	); err != nil {
+		return err
+	}
+	metrics.SetReady(true)
 
 	if environment("DLP_ORACLE_LEADER_ELECTION", "false") != "true" {
+		metrics.SetLeader(true)
 		coordinator.Run(ctx)
+		metrics.SetLeader(false)
 		return nil
 	}
 	return oracle.RunAsLeader(ctx, oracle.LeaderConfig{
@@ -128,7 +145,11 @@ func run() error {
 		LeaseDuration: 15 * time.Second,
 		RenewDeadline: 10 * time.Second,
 		RetryPeriod:   2 * time.Second,
-	}, coordinator.Run)
+	}, func(leaderContext context.Context) {
+		metrics.SetLeader(true)
+		coordinator.Run(leaderContext)
+		metrics.SetLeader(false)
+	})
 }
 
 func main() {

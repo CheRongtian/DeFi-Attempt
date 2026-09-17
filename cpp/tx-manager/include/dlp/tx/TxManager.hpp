@@ -1,9 +1,11 @@
 #ifndef DLP_TX_TX_MANAGER_HPP
 #define DLP_TX_TX_MANAGER_HPP
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "dlp/ethereum/Transaction.hpp"
 #include "dlp/tx/TransactionRpc.hpp"
@@ -17,6 +19,16 @@ struct TxManagerConfig
     std::uint64_t confirmationDepth{1};
     std::uint64_t replacementAfterBlocks{3};
     std::uint32_t maximumRetries{3};
+};
+
+struct TxManagerRunResult
+{
+    std::size_t active{0};
+    std::size_t included{0};
+    std::size_t finalized{0};
+    std::size_t reorged{0};
+    std::size_t failed{0};
+    std::vector<std::uint64_t> confirmationBlocks;
 };
 
 class TransactionQueue
@@ -48,7 +60,7 @@ public:
         ethereum::Bytes data,
         ethereum::Uint256 value = ethereum::Uint256{}
     ) override;
-    void RunOnce();
+    TxManagerRunResult RunOnce();
 
 private:
     void Submit(TxJob& job, bool retry);

@@ -14,6 +14,7 @@ data:
   DLP_NATS_URL: nats://nats:4222
   DLP_API_ADDRESS: 0.0.0.0
   DLP_API_PORT: "8080"
+  DLP_METRICS_ADDRESS: 0.0.0.0
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -31,6 +32,10 @@ spec:
     metadata:
       labels:
         app: indexer
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "9101"
     spec:
       containers:
         - name: indexer
@@ -41,6 +46,20 @@ spec:
                 name: dlp-runtime
             - configMapRef:
                 name: dlp-contracts
+          env:
+            - name: DLP_METRICS_PORT
+              value: "9101"
+          ports:
+            - name: metrics
+              containerPort: 9101
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -56,6 +75,10 @@ spec:
     metadata:
       labels:
         app: outbox-publisher
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "9102"
     spec:
       containers:
         - name: outbox-publisher
@@ -64,6 +87,20 @@ spec:
           envFrom:
             - configMapRef:
                 name: dlp-runtime
+          env:
+            - name: DLP_METRICS_PORT
+              value: "9102"
+          ports:
+            - name: metrics
+              containerPort: 9102
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -79,6 +116,10 @@ spec:
     metadata:
       labels:
         app: risk-engine
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "9103"
     spec:
       containers:
         - name: risk-engine
@@ -87,6 +128,20 @@ spec:
           envFrom:
             - configMapRef:
                 name: dlp-runtime
+          env:
+            - name: DLP_METRICS_PORT
+              value: "9103"
+          ports:
+            - name: metrics
+              containerPort: 9103
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -104,6 +159,10 @@ spec:
     metadata:
       labels:
         app: tx-manager
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "9104"
     spec:
       containers:
         - name: tx-manager
@@ -114,6 +173,20 @@ spec:
                 name: dlp-runtime
             - secretRef:
                 name: dlp-operator
+          env:
+            - name: DLP_METRICS_PORT
+              value: "9104"
+          ports:
+            - name: metrics
+              containerPort: 9104
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -129,6 +202,10 @@ spec:
     metadata:
       labels:
         app: liquidator
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "9105"
     spec:
       containers:
         - name: liquidator
@@ -144,6 +221,19 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: DLP_METRICS_PORT
+              value: "9105"
+          ports:
+            - name: metrics
+              containerPort: 9105
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -197,6 +287,10 @@ spec:
     metadata:
       labels:
         app: oracle-coordinator
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "9107"
     spec:
       serviceAccountName: oracle-coordinator
       containers:
@@ -224,6 +318,19 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: DLP_METRICS_PORT
+              value: "9107"
+          ports:
+            - name: metrics
+              containerPort: 9107
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
 ---
 apiVersion: v1
 kind: Service
@@ -254,6 +361,10 @@ spec:
     metadata:
       labels:
         app: api-server
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "9106"
     spec:
       containers:
         - name: api-server
@@ -265,9 +376,18 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+            - name: metrics
+              containerPort: 9106
+          env:
+            - name: DLP_METRICS_PORT
+              value: "9106"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
           readinessProbe:
             httpGet:
-              path: /protocol/stats
-              port: http
+              path: /ready
+              port: metrics
             initialDelaySeconds: 2
             periodSeconds: 2

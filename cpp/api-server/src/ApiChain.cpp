@@ -2,6 +2,7 @@
 
 #include <exception>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <type_traits>
@@ -33,14 +34,20 @@ public:
         -> std::invoke_result_t<Operation, ethereum::RpcClient&>
     {
         std::exception_ptr lastFailure;
-        const auto start = nextIndex_++ % clients_.size();
+        const auto start = ActiveIndex();
         for(std::size_t offset = 0; offset < clients_.size(); ++offset)
         {
             const auto index = (start + offset) % clients_.size();
             try
             {
                 Validate(index);
-                return operation(*clients_[index]);
+                auto result = operation(*clients_[index]);
+                if(index != start)
+                {
+                    ethereum::ObserveRpcFailover();
+                }
+                SetActiveIndex(index);
+                return result;
             }
             catch(...)
             {
@@ -56,13 +63,30 @@ public:
     }
 
 private:
+    [[nodiscard]] std::size_t ActiveIndex() const
+    {
+        const std::scoped_lock lock{mutex_};
+        return activeIndex_;
+    }
+
+    void SetActiveIndex(std::size_t index) const
+    {
+        const std::scoped_lock lock{mutex_};
+        activeIndex_ = index;
+    }
+
     void Validate(std::size_t index) const
     {
-        if(validated_[index])
         {
-            return;
+            const std::scoped_lock lock{mutex_};
+            if(validated_[index])
+            {
+                return;
+            }
         }
+
         const auto chainId = clients_[index]->GetChainId();
+        const std::scoped_lock lock{mutex_};
         if(!chainId_.has_value())
         {
             chainId_ = chainId;
@@ -77,7 +101,8 @@ private:
     std::vector<std::unique_ptr<ethereum::RpcClient>> clients_;
     mutable std::vector<bool> validated_;
     mutable std::optional<ethereum::Uint256> chainId_;
-    mutable std::size_t nextIndex_{0};
+    mutable std::size_t activeIndex_{0};
+    mutable std::mutex mutex_;
 };
 
 RpcApiChain::RpcApiChain(std::string endpoint)

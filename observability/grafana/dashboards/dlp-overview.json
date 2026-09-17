@@ -1,0 +1,152 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Chain Head",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "max(chain_head_height)", "refId": "A"}],
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+    },
+    {
+      "type": "stat",
+      "title": "Indexer Lag",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "max(indexer_lag_blocks)", "refId": "A"}],
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+    },
+    {
+      "type": "stat",
+      "title": "Positions",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "max(protocol_position_count)", "refId": "A"}],
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+    },
+    {
+      "type": "stat",
+      "title": "Current Candidates",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "max(liquidation_candidates)", "refId": "A"}],
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Indexer Height and Lag",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "max(chain_head_height)", "legendFormat": "chain head", "refId": "A"},
+        {"expr": "max(indexed_block_height)", "legendFormat": "indexed", "refId": "B"},
+        {"expr": "max(indexer_lag_blocks)", "legendFormat": "lag", "refId": "C"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+    },
+    {
+      "type": "timeseries",
+      "title": "Risk and Liquidation Throughput",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "sum(rate(risk_positions_scanned_total[$__rate_interval]))", "legendFormat": "positions scanned/s", "refId": "A"},
+        {"expr": "sum(rate(liquidation_candidates_total[$__rate_interval]))", "legendFormat": "candidates/s", "refId": "B"},
+        {"expr": "sum(rate(liquidation_success_total[$__rate_interval]))", "legendFormat": "success/s", "refId": "C"},
+        {"expr": "sum(rate(liquidation_failure_total[$__rate_interval]))", "legendFormat": "failure/s", "refId": "D"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+    },
+    {
+      "type": "timeseries",
+      "title": "Transaction State Totals",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "max(tx_pending_total)", "legendFormat": "pending", "refId": "A"},
+        {"expr": "sum(tx_included_total)", "legendFormat": "included", "refId": "B"},
+        {"expr": "sum(tx_finalized_total)", "legendFormat": "finalized", "refId": "C"},
+        {"expr": "sum(tx_reorged_total)", "legendFormat": "reorged", "refId": "D"},
+        {"expr": "sum(tx_failed_total)", "legendFormat": "failed", "refId": "E"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12}
+    },
+    {
+      "type": "timeseries",
+      "title": "Transaction Confirmation Latency (blocks, p95)",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(tx_confirmation_latency_blocks_bucket[$__rate_interval])))", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12}
+    },
+    {
+      "type": "timeseries",
+      "title": "RPC Latency (seconds, p95)",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le, service) (rate(rpc_request_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "{{service}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20}
+    },
+    {
+      "type": "timeseries",
+      "title": "RPC Requests and Errors",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "sum by (service) (rate(rpc_requests_total[$__rate_interval]))", "legendFormat": "{{service}} requests/s", "refId": "A"},
+        {"expr": "sum by (service) (rate(rpc_errors_total[$__rate_interval]))", "legendFormat": "{{service}} errors/s", "refId": "B"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20}
+    },
+    {
+      "type": "timeseries",
+      "title": "RPC Block Height",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "max by (service) (rpc_block_height)", "legendFormat": "{{service}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28}
+    },
+    {
+      "type": "timeseries",
+      "title": "RPC Failovers and Broadcasts",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "sum by (service) (rate(rpc_failovers_total[$__rate_interval]))", "legendFormat": "{{service}} failovers/s", "refId": "A"},
+        {"expr": "sum by (service) (rate(rpc_broadcast_success_total[$__rate_interval]))", "legendFormat": "{{service}} broadcast success/s", "refId": "B"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28}
+    },
+    {
+      "type": "stat",
+      "title": "Oracle Round",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "max(oracle_round)", "refId": "A"}],
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 36}
+    },
+    {
+      "type": "stat",
+      "title": "Oracle Update Age (seconds)",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "time() - max(oracle_last_update_timestamp_seconds)", "refId": "A"}],
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 36}
+    },
+    {
+      "type": "timeseries",
+      "title": "Service Availability",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "min by (service) (service_ready)", "legendFormat": "{{service}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 41}
+    },
+    {
+      "type": "timeseries",
+      "title": "Kubernetes Available Replicas",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "kube_deployment_status_replicas_available{namespace=\"dlp\"}", "legendFormat": "{{deployment}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36}
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 41,
+  "tags": ["dlp", "defi"],
+  "templating": {"list": []},
+  "time": {"from": "now-30m", "to": "now"},
+  "timezone": "browser",
+  "title": "DLP Overview",
+  "uid": "dlp-overview",
+  "version": 3
+}

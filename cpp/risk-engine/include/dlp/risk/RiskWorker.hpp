@@ -45,6 +45,13 @@ private:
     std::unique_ptr<Impl> implementation_;
 };
 
+struct RiskWorkResult
+{
+    bool committed{false};
+    std::size_t positionsScanned{0};
+    std::size_t liquidationCandidates{0};
+};
+
 class RiskWorker final
 {
 public:
@@ -52,6 +59,11 @@ public:
 
     [[nodiscard]] bool Process(std::string_view sourceEventId, std::uint64_t evaluatedAt);
     [[nodiscard]] bool Rescan(std::uint64_t evaluatedAt);
+    [[nodiscard]] RiskWorkResult ProcessWithStats(
+        std::string_view sourceEventId,
+        std::uint64_t evaluatedAt
+    );
+    [[nodiscard]] RiskWorkResult RescanWithStats(std::uint64_t evaluatedAt);
 
 private:
     RiskEngine& engine_;

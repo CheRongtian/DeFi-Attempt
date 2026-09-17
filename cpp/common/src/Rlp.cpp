@@ -44,7 +44,7 @@ Bytes Rlp::EncodeBytes(const Bytes& value)
 {
     if(value.size() == 1U && value.front() < 0x80U)
     {
-        return value;
+        return Bytes{value.front()};
     }
     return EncodePayload(value, 0x80U, 0xb7U);
 }

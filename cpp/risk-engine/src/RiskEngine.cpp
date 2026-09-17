@@ -33,6 +33,14 @@ std::vector<LiquidationCandidate> RiskEngine::Scan(
     std::uint64_t evaluatedAt
 ) const
 {
+    return ScanWithStats(limit, evaluatedAt).candidates;
+}
+
+RiskScanResult RiskEngine::ScanWithStats(
+    std::size_t limit,
+    std::uint64_t evaluatedAt
+) const
+{
     const auto market = repository_.LoadMarket(chainId_);
     const auto positions = repository_.LoadPositions(chainId_, limit);
     std::vector<LiquidationCandidate> candidates;
@@ -46,7 +54,7 @@ std::vector<LiquidationCandidate> RiskEngine::Scan(
             candidates.push_back(std::move(*candidate));
         }
     }
-    return candidates;
+    return RiskScanResult{positions.size(), std::move(candidates)};
 }
 
 }

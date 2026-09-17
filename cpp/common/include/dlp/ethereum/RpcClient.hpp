@@ -18,6 +18,24 @@
 namespace dlp::ethereum
 {
 
+class RpcObserver
+{
+public:
+    virtual ~RpcObserver() = default;
+    virtual void Observe(
+        std::string_view method,
+        std::chrono::steady_clock::duration duration,
+        bool succeeded
+    ) noexcept = 0;
+    virtual void ObserveBlockHeight(std::uint64_t blockHeight) noexcept = 0;
+    virtual void ObserveFailover() noexcept = 0;
+    virtual void ObserveBroadcastSuccess() noexcept = 0;
+};
+
+void SetRpcObserver(RpcObserver* observer) noexcept;
+void ObserveRpcFailover() noexcept;
+void ObserveRpcBroadcastSuccess() noexcept;
+
 enum class RpcErrorKind
 {
     InvalidEndpoint,

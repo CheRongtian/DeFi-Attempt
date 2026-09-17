@@ -1,7 +1,10 @@
-FROM ubuntu:24.04 AS builder
+FROM ubuntu:24.04 AS cpp-dependencies
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG LIBPQXX_VERSION=8.0.2
+ARG ETHASH_VERSION=1.1.0
+ARG PROMETHEUS_CPP_VERSION=1.3.0
+ARG NATS_C_VERSION=3.11.0
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
@@ -29,6 +32,32 @@ RUN curl --fail --location --silent --show-error \
     && cmake --build /tmp/libpqxx-build --parallel \
     && cmake --install /tmp/libpqxx-build
 
+RUN mkdir -p /opt/dlp-dependencies/ethash \
+    && curl --fail --location --silent --show-error \
+        "https://github.com/chfast/ethash/archive/refs/tags/v${ETHASH_VERSION}.tar.gz" \
+        --output /tmp/ethash.tar.gz \
+    && tar --extract --gzip --file /tmp/ethash.tar.gz \
+        --directory /opt/dlp-dependencies/ethash --strip-components=1 \
+    && rm /tmp/ethash.tar.gz
+
+RUN mkdir -p /opt/dlp-dependencies/prometheus-cpp \
+    && curl --fail --location --silent --show-error \
+        "https://github.com/jupp0r/prometheus-cpp/archive/refs/tags/v${PROMETHEUS_CPP_VERSION}.tar.gz" \
+        --output /tmp/prometheus-cpp.tar.gz \
+    && tar --extract --gzip --file /tmp/prometheus-cpp.tar.gz \
+        --directory /opt/dlp-dependencies/prometheus-cpp --strip-components=1 \
+    && rm /tmp/prometheus-cpp.tar.gz
+
+RUN mkdir -p /opt/dlp-dependencies/nats-c \
+    && curl --fail --location --silent --show-error \
+        "https://github.com/nats-io/nats.c/archive/refs/tags/v${NATS_C_VERSION}.tar.gz" \
+        --output /tmp/nats-c.tar.gz \
+    && tar --extract --gzip --file /tmp/nats-c.tar.gz \
+        --directory /opt/dlp-dependencies/nats-c --strip-components=1 \
+    && rm /tmp/nats-c.tar.gz
+
+FROM cpp-dependencies AS builder
+
 WORKDIR /source
 COPY . .
 
@@ -36,6 +65,9 @@ RUN cmake -S . -B /tmp/dlp-build \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_TESTING=OFF \
         -DDLP_BUILD_CPP_SMOKE=OFF \
+        -DFETCHCONTENT_SOURCE_DIR_ETHASH=/opt/dlp-dependencies/ethash \
+        -DFETCHCONTENT_SOURCE_DIR_PROMETHEUS_CPP=/opt/dlp-dependencies/prometheus-cpp \
+        -DFETCHCONTENT_SOURCE_DIR_NATS_C=/opt/dlp-dependencies/nats-c \
     && cmake --build /tmp/dlp-build --parallel --target \
         dlp_indexer \
         dlp_outbox_publisher \
@@ -89,7 +121,7 @@ ENTRYPOINT ["dlp_api_server"]
 FROM golang:1.25-bookworm AS oracle-builder
 
 WORKDIR /source
-COPY go/oracle-coordinator/go.mod ./
+COPY go/oracle-coordinator/go.mod go/oracle-coordinator/go.sum ./
 RUN go mod download
 COPY go/oracle-coordinator/ ./
 RUN CGO_ENABLED=0 go build -o /oracle-coordinator ./cmd/oracle-coordinator

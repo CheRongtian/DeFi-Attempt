@@ -37,13 +37,18 @@ public:
         -> std::invoke_result_t<Operation, ethereum::RpcClient&>
     {
         std::exception_ptr lastFailure;
+        const auto start = activeIndex_;
         for(std::size_t offset = 0; offset < clients_.size(); ++offset)
         {
-            const auto index = (activeIndex_ + offset) % clients_.size();
+            const auto index = (start + offset) % clients_.size();
             try
             {
                 ValidateCandidate(index);
                 auto result = operation(*clients_[index]);
+                if(index != start)
+                {
+                    ethereum::ObserveRpcFailover();
+                }
                 activeIndex_ = index;
                 return result;
             }

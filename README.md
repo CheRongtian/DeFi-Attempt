@@ -57,8 +57,10 @@ DeFi/
 │   │   │   ├── Hex.hpp
 │   │   │   ├── Keccak.hpp
 │   │   │   ├── ProtocolAbi.hpp
+│   │   │   ├── Rlp.hpp
 │   │   │   ├── RpcClient.hpp
 │   │   │   ├── RpcEndpoints.hpp
+│   │   │   ├── Transaction.hpp
 │   │   │   ├── Uint256.hpp
 │   │   │   └── Uint256Math.hpp
 │   │   ├── smoke/
@@ -69,8 +71,10 @@ DeFi/
 │   │   │   ├── Hex.cpp
 │   │   │   ├── Keccak.cpp
 │   │   │   ├── ProtocolAbi.cpp
+│   │   │   ├── Rlp.cpp
 │   │   │   ├── RpcClient.cpp
 │   │   │   ├── RpcEndpoints.cpp
+│   │   │   ├── Transaction.cpp
 │   │   │   ├── Uint256.cpp
 │   │   │   └── Uint256Math.cpp
 │   │   ├── tests/
@@ -79,8 +83,10 @@ DeFi/
 │   │   │   ├── HexTests.cpp
 │   │   │   ├── KeccakTests.cpp
 │   │   │   ├── ProtocolAbiTests.cpp
+│   │   │   ├── RlpTests.cpp
 │   │   │   ├── RpcClientIntegrationTests.cpp
 │   │   │   ├── RpcEndpointsTests.cpp
+│   │   │   ├── TransactionTests.cpp
 │   │   │   ├── Uint256Tests.cpp
 │   │   │   └── Uint256MathTests.cpp
 │   │   └── CMakeLists.txt
@@ -88,6 +94,9 @@ DeFi/
 │   │   ├── include/dlp/messaging/
 │   │   ├── src/
 │   │   └── tests/
+│   ├── observability/
+│   │   ├── include/dlp/observability/
+│   │   └── src/
 │   ├── indexer/
 │   │   ├── include/dlp/indexer/
 │   │   ├── src/
@@ -133,17 +142,24 @@ DeFi/
 │   ├── applications.yaml
 │   ├── infrastructure.yaml
 │   ├── kind-config.yaml
-│   └── migrations-job.yaml
+│   ├── migrations-job.yaml
+│   └── observability.yaml
+├── observability/
+│   ├── grafana/
+│   └── prometheus/
 ├── scripts/
 │   ├── create-liquidation-scenario.sh
 │   ├── deploy-local.sh
 │   ├── run-containers.sh
 │   ├── run-kind.sh
 │   ├── run-local.sh
+│   ├── run-observability-tests.sh
+│   ├── run-recovery-tests.sh
 │   └── scale-kind.sh
 ├── tests/
 │   └── golden/
 │       └── risk_vectors.json
+├── .dockerignore
 ├── .gitignore
 ├── CMakeLists.txt
 ├── Dockerfile
@@ -158,13 +174,14 @@ DeFi/
 - macOS or Linux
 - Bash or Zsh
 - `curl`
+- Python 3 for the observability result parser
 - A C++20 compiler and CMake 3.20 or newer
 - Go 1.25 or newer
 - Boost 1.74 or newer, nlohmann/json 3.10 or newer, GoogleTest, libpq, and libpqxx 8
 - Docker with Docker Compose
 - `kubectl` and kind for the Kubernetes deployment
 - Foundry with Anvil for local deployment and RPC integration
-- An internet connection for installing Foundry, downloading Solc, and fetching the pinned Ethereum Keccak dependency on the first CMake configuration
+- An internet connection for installing Foundry, downloading Solc, and fetching the pinned Ethereum Keccak, Prometheus C++, and NATS C dependencies on the first CMake configuration
 
 ## Install Foundry
 
@@ -312,11 +329,13 @@ Build the service images, create a fresh kind cluster, deploy the contracts, run
 ./scripts/run-kind.sh --clean
 ```
 
-The API is available at `http://127.0.0.1:18080`. A run interrupted by a slow image pull can continue without deleting the cluster:
+The API is available at `http://127.0.0.1:18080`, Prometheus at `http://127.0.0.1:19090`, and the provisioned Grafana dashboard at `http://127.0.0.1:13000/d/dlp-overview`. A run interrupted by a slow image pull can continue without deleting the cluster:
 
 ```bash
 ./scripts/run-kind.sh
 ```
+
+The Docker build keeps the pinned C++ dependency sources in a layer created before the application source is copied, so normal source changes reuse those dependencies.
 
 Inspect the deployment and the elected Oracle leader with:
 
@@ -324,6 +343,14 @@ Inspect the deployment and the elected Oracle leader with:
 kubectl --context kind-dlp get pods -n dlp
 kubectl --context kind-dlp get lease oracle-coordinator -n dlp
 ```
+
+Run the end-to-end observability checks and collect their output under `artifacts/observability/`:
+
+```bash
+./scripts/run-observability-tests.sh --clean
+```
+
+The runner records kind startup and every acceptance check in `summary.log`, waits for all ten Prometheus targets to complete a successful scrape, and then saves the target and metric snapshots. Generated artifacts are excluded from the Docker build context so writing logs does not invalidate the C++ image cache.
 
 ## Implemented Features
 
@@ -521,6 +548,8 @@ The Boost.Beast API Server exposes markets, positions, health factors, liquidati
 Endpoints:
 
 ```text
+GET  /health
+GET  /ready
 GET  /markets
 GET  /positions/:address
 GET  /positions/:address/health
@@ -554,7 +583,7 @@ scripts/scale-kind.sh
 
 Three simulated price providers are aggregated by median. Three Go Oracle Coordinator replicas use a Kubernetes Lease to elect one publisher, while PostgreSQL fencing, monotonic round IDs, and idempotent transaction jobs protect publication. The private key remains isolated in the C++ Transaction Manager.
 
-RPC routing follows request semantics: the Indexer uses an active/failover pair with chain and canonical-block verification, the API round-robins read requests, and the Transaction Manager obtains pending nonces from the preferred primary while broadcasting the same signed payload to both endpoints.
+RPC routing follows request semantics: the Indexer uses an active/failover pair with chain and canonical-block verification, the API keeps a validated active endpoint and fails over when it becomes unavailable, and the Transaction Manager obtains pending nonces from the preferred primary while broadcasting the same signed payload to both endpoints.
 
 Files:
 
@@ -563,4 +592,17 @@ go/oracle-coordinator/
 database/migrations/010_create_oracle_publications.sql
 infrastructure/rpc-proxy/
 cpp/common/include/dlp/ethereum/RpcEndpoints.hpp
+```
+
+### Prometheus and Grafana Observability
+
+Every C++ and Go service exposes `/health`, `/ready`, and `/metrics`. Prometheus discovers the application pods and kube-state-metrics, while the provisioned `DLP Overview` dashboard covers chain and indexer progress, risk scans, liquidations, transaction lifecycle, RPC latency, block height, successful failovers and broadcasts, Oracle freshness, and Kubernetes availability.
+
+Files:
+
+```text
+cpp/observability/
+observability/
+k8s/observability.yaml
+scripts/run-observability-tests.sh
 ```

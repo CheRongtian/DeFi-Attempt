@@ -9,6 +9,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     include(CTest)
     add_subdirectory(../common ${CMAKE_CURRENT_BINARY_DIR}/common)
+    add_subdirectory(../observability ${CMAKE_CURRENT_BINARY_DIR}/observability)
 endif()
 
 include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/HomebrewPostgreSQL.cmake)
@@ -46,7 +47,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 endif()
 
 add_executable(dlp_indexer src/Main.cpp)
-target_link_libraries(dlp_indexer PRIVATE DLP::indexer_core Threads::Threads)
+target_link_libraries(dlp_indexer PRIVATE DLP::indexer_core DLP::observability Threads::Threads)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(dlp_indexer PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)

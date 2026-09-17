@@ -30,7 +30,9 @@ std::size_t Indexer::SyncToHead()
     while(true)
     {
         const auto chainHead = chain_.GetBlockNumber();
+        status_.chainHead = chainHead;
         auto cursor = ReconcileCursor(chainId, chainHead);
+        status_.indexedBlock = cursor.has_value() ? cursor->blockNumber : 0U;
 
         if(cursor.has_value() && cursor->blockNumber == std::numeric_limits<std::uint64_t>::max())
         {
@@ -61,8 +63,14 @@ std::size_t Indexer::SyncToHead()
         }
 
         IndexBlock(chainId, *header);
+        status_.indexedBlock = header->number.ToUint64();
         ++indexedCount;
     }
+}
+
+const IndexerStatus& Indexer::Status() const noexcept
+{
+    return status_;
 }
 
 std::optional<SyncCursor> Indexer::ReconcileCursor(
@@ -123,6 +131,7 @@ void Indexer::Rewind(
     const std::optional<IndexedBlock>& ancestor
 )
 {
+    ++status_.reorgs;
     const auto state = ancestor.has_value()
         ? projector_.Rebuild(store_.LoadCanonicalLogsThrough(chainId, ancestor->number))
         : projector_.CreateInitialState();

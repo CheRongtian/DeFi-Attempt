@@ -179,6 +179,14 @@ ApiResponse ApiService::Handle(const ApiRequest& request) const
 {
     try
     {
+        if(request.method == "GET" && request.target == "/health")
+        {
+            return JsonResponse(200, Json{{"status", "healthy"}});
+        }
+        if(request.method == "GET" && request.target == "/ready")
+        {
+            return JsonResponse(200, Json{{"status", "ready"}});
+        }
         if(request.method == "GET" && request.target == "/markets") return Markets();
         if(request.method == "GET" && request.target == "/liquidations") return Liquidations();
         if(request.method == "GET" && request.target == "/protocol/stats") return Stats();

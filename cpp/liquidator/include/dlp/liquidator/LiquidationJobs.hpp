@@ -23,6 +23,13 @@ struct LiquidationJob
     std::uint64_t fencingToken{0};
 };
 
+struct LiquidationReconcileResult
+{
+    std::size_t completed{0};
+    std::size_t failed{0};
+    std::size_t reorged{0};
+};
+
 class PostgresLiquidationJobStore final
 {
 public:
@@ -49,6 +56,7 @@ public:
     [[nodiscard]] bool Invalidate(const LiquidationJob& job, std::string_view reason);
     [[nodiscard]] std::size_t InvalidateNonCanonical(const ethereum::Uint256& chainId);
     [[nodiscard]] std::size_t ReconcileSubmitted();
+    [[nodiscard]] LiquidationReconcileResult ReconcileSubmittedWithStats();
 
 private:
     class Impl;

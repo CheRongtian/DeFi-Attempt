@@ -15,6 +15,8 @@
 #include "dlp/liquidator/LiquidationJobs.hpp"
 #include "dlp/liquidator/Liquidator.hpp"
 #include "dlp/messaging/JetStream.hpp"
+#include "dlp/observability/Metrics.hpp"
+#include "dlp/observability/RpcMetrics.hpp"
 
 namespace
 {
@@ -83,6 +85,34 @@ int main(int argc, char* argv[])
             dlp::ethereum::Address::FromHex(RequiredEnvironment("DLP_USDC_ADDRESS"))
         };
 
+        dlp::observability::ServiceMetrics metrics{
+            "liquidator",
+            EnvironmentOrDefault("DLP_METRICS_ADDRESS", "0.0.0.0"),
+            static_cast<std::uint16_t>(UnsignedEnvironment("DLP_METRICS_PORT", "9105"))
+        };
+        dlp::observability::RpcMetrics rpcMetrics{metrics};
+        auto& queuedTotal = metrics.AddCounter(
+            "liquidation_jobs_queued_total",
+            "Total liquidation jobs accepted by the liquidator"
+        );
+        auto& submittedTotal = metrics.AddCounter(
+            "liquidation_jobs_submitted_total",
+            "Total liquidation transactions submitted"
+        );
+        auto& successTotal = metrics.AddCounter(
+            "liquidation_success_total",
+            "Total finalized liquidations"
+        );
+        auto& failureTotal = metrics.AddCounter(
+            "liquidation_failure_total",
+            "Total failed or reorged liquidations"
+        );
+        auto& invalidatedTotal = metrics.AddCounter(
+            "liquidation_invalidated_total",
+            "Total liquidation jobs invalidated before completion"
+        );
+        auto& errors = metrics.AddCounter("liquidator_errors_total", "Total failed liquidator iterations");
+
         const auto chainId = dlp::ethereum::RpcClient{rpcUrl}.GetChainId();
         dlp::liquidator::RpcLiquidationChain chain{rpcUrl, contracts};
         dlp::liquidator::Liquidator liquidator{
@@ -102,6 +132,7 @@ int main(int argc, char* argv[])
             std::string{dlp::messaging::RISK_LIQUIDATION_DETECTED},
             "liquidator"
         };
+        metrics.SetReady(true);
 
         do
         {
@@ -114,6 +145,7 @@ int main(int argc, char* argv[])
                     message->Ack();
                     if(queued)
                     {
+                        queuedTotal.Increment();
                         std::cout << "queued liquidation job " << message->Event().eventId << '\n';
                     }
                 }
@@ -127,6 +159,7 @@ int main(int argc, char* argv[])
                     {
                         if(jobs.Submit(*job, *submission, operatorAddress))
                         {
+                            submittedTotal.Increment();
                             std::cout << "submitted liquidation job " << job->jobId << '\n';
                         }
                     }
@@ -135,15 +168,20 @@ int main(int argc, char* argv[])
                         ++invalidated;
                     }
                 }
-                const auto reconciled = jobs.ReconcileSubmitted();
-                if(invalidated != 0U || reconciled != 0U)
+                const auto reconciled = jobs.ReconcileSubmittedWithStats();
+                successTotal.Increment(static_cast<double>(reconciled.completed));
+                failureTotal.Increment(static_cast<double>(reconciled.failed + reconciled.reorged));
+                invalidatedTotal.Increment(static_cast<double>(invalidated));
+                const auto reconciledCount = reconciled.completed + reconciled.failed + reconciled.reorged;
+                if(invalidated != 0U || reconciledCount != 0U)
                 {
-                    std::cout << "updated " << invalidated << " stale and " << reconciled
+                    std::cout << "updated " << invalidated << " stale and " << reconciledCount
                               << " submitted liquidation job(s)\n";
                 }
             }
             catch(const std::exception& exception)
             {
+                errors.Increment();
                 if(runOnce)
                 {
                     throw;

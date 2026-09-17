@@ -57,8 +57,10 @@ DeFi/
 │   │   │   ├── Hex.hpp
 │   │   │   ├── Keccak.hpp
 │   │   │   ├── ProtocolAbi.hpp
+│   │   │   ├── Rlp.hpp
 │   │   │   ├── RpcClient.hpp
 │   │   │   ├── RpcEndpoints.hpp
+│   │   │   ├── Transaction.hpp
 │   │   │   ├── Uint256.hpp
 │   │   │   └── Uint256Math.hpp
 │   │   ├── smoke/
@@ -69,8 +71,10 @@ DeFi/
 │   │   │   ├── Hex.cpp
 │   │   │   ├── Keccak.cpp
 │   │   │   ├── ProtocolAbi.cpp
+│   │   │   ├── Rlp.cpp
 │   │   │   ├── RpcClient.cpp
 │   │   │   ├── RpcEndpoints.cpp
+│   │   │   ├── Transaction.cpp
 │   │   │   ├── Uint256.cpp
 │   │   │   └── Uint256Math.cpp
 │   │   ├── tests/
@@ -79,8 +83,10 @@ DeFi/
 │   │   │   ├── HexTests.cpp
 │   │   │   ├── KeccakTests.cpp
 │   │   │   ├── ProtocolAbiTests.cpp
+│   │   │   ├── RlpTests.cpp
 │   │   │   ├── RpcClientIntegrationTests.cpp
 │   │   │   ├── RpcEndpointsTests.cpp
+│   │   │   ├── TransactionTests.cpp
 │   │   │   ├── Uint256Tests.cpp
 │   │   │   └── Uint256MathTests.cpp
 │   │   └── CMakeLists.txt
@@ -88,6 +94,9 @@ DeFi/
 │   │   ├── include/dlp/messaging/
 │   │   ├── src/
 │   │   └── tests/
+│   ├── observability/
+│   │   ├── include/dlp/observability/
+│   │   └── src/
 │   ├── indexer/
 │   │   ├── include/dlp/indexer/
 │   │   ├── src/
@@ -133,17 +142,24 @@ DeFi/
 │   ├── applications.yaml
 │   ├── infrastructure.yaml
 │   ├── kind-config.yaml
-│   └── migrations-job.yaml
+│   ├── migrations-job.yaml
+│   └── observability.yaml
+├── observability/
+│   ├── grafana/
+│   └── prometheus/
 ├── scripts/
 │   ├── create-liquidation-scenario.sh
 │   ├── deploy-local.sh
 │   ├── run-containers.sh
 │   ├── run-kind.sh
 │   ├── run-local.sh
+│   ├── run-observability-tests.sh
+│   ├── run-recovery-tests.sh
 │   └── scale-kind.sh
 ├── tests/
 │   └── golden/
 │       └── risk_vectors.json
+├── .dockerignore
 ├── .gitignore
 ├── CMakeLists.txt
 ├── Dockerfile
@@ -158,13 +174,14 @@ DeFi/
 - macOS 或 Linux
 - Bash 或 Zsh
 - `curl`
+- Python 3，用于解析可观测性验收结果
 - 支持 C++20 的编译器和 CMake 3.20 或更高版本
 - Go 1.25 或更高版本
 - Boost 1.74 或更高版本、nlohmann/json 3.10 或更高版本、GoogleTest、libpq 和 libpqxx 8
 - Docker 和 Docker Compose
 - 用于 Kubernetes 部署的 `kubectl` 与 kind
 - Foundry 与 Anvil，用于本地部署和 RPC 集成测试
-- 可用的网络连接，用于安装 Foundry、下载 Solc，以及首次配置 CMake 时获取固定版本的 Ethereum Keccak 依赖
+- 可用的网络连接，用于安装 Foundry、下载 Solc，以及首次配置 CMake 时获取固定版本的 Ethereum Keccak、Prometheus C++ 与 NATS C 依赖
 
 ## 安装 Foundry
 
@@ -312,11 +329,13 @@ Indexer 追上链头后，该场景会产生五次部分清算、耗尽借款人
 ./scripts/run-kind.sh --clean
 ```
 
-API 地址为 `http://127.0.0.1:18080`。如果首次拉取镜像较慢导致启动中断，可以保留当前集群继续执行：
+API 地址为 `http://127.0.0.1:18080`，Prometheus 地址为 `http://127.0.0.1:19090`，自动配置的 Grafana Dashboard 地址为 `http://127.0.0.1:13000/d/dlp-overview`。如果首次拉取镜像较慢导致启动中断，可以保留当前集群继续执行：
 
 ```bash
 ./scripts/run-kind.sh
 ```
+
+Docker 会在复制项目源码之前建立固定版本的 C++ 依赖层，因此普通源码改动可以直接复用这些依赖。
 
 查看部署状态和当前 Oracle Leader：
 
@@ -324,6 +343,14 @@ API 地址为 `http://127.0.0.1:18080`。如果首次拉取镜像较慢导致启
 kubectl --context kind-dlp get pods -n dlp
 kubectl --context kind-dlp get lease oracle-coordinator -n dlp
 ```
+
+一键执行可观测性验收，并将结果写入 `artifacts/observability/`：
+
+```bash
+./scripts/run-observability-tests.sh --clean
+```
+
+脚本会把 kind 启动结果和每项验收结果写入 `summary.log`，等待全部十个 Prometheus Target 完成首次成功抓取后，再保存 Target 与指标快照。生成的 artifacts 已排除在 Docker build context 之外，写入日志不会再使 C++ 镜像缓存失效。
 
 ## 已实现功能
 
@@ -521,6 +548,8 @@ scripts/create-liquidation-scenario.sh
 接口：
 
 ```text
+GET  /health
+GET  /ready
 GET  /markets
 GET  /positions/:address
 GET  /positions/:address/health
@@ -554,7 +583,7 @@ scripts/scale-kind.sh
 
 三个模拟价格 Provider 通过中位数聚合。三个 Go Oracle Coordinator 副本使用 Kubernetes Lease 选举唯一发布者，并通过 PostgreSQL Fencing、单调递增 roundId 和幂等交易任务保护发布流程。私钥仍只由 C++ Tx Manager 持有。
 
-RPC 根据请求用途分别路由：Indexer 使用 Active/Failover 并校验 chainId 与 canonical block hash；API 对只读请求执行 Round Robin；Tx Manager 优先从主 RPC 获取 pending nonce，并向两个端点广播完全相同的已签名交易。
+RPC 根据请求用途分别路由：Indexer 使用 Active/Failover 并校验 chainId 与 canonical block hash；API 保持一个已验证的活动端点，并在其不可用时切换；Tx Manager 优先从主 RPC 获取 pending nonce，并向两个端点广播完全相同的已签名交易。
 
 文件：
 
@@ -563,4 +592,17 @@ go/oracle-coordinator/
 database/migrations/010_create_oracle_publications.sql
 infrastructure/rpc-proxy/
 cpp/common/include/dlp/ethereum/RpcEndpoints.hpp
+```
+
+### Prometheus 与 Grafana 可观测性
+
+所有 C++ 和 Go 服务统一提供 `/health`、`/ready` 和 `/metrics`。Prometheus 自动发现应用 Pod 和 kube-state-metrics；预置的 `DLP Overview` Dashboard 展示链与索引进度、风险扫描、清算结果、交易生命周期、RPC 延迟、区块高度、成功切换与广播、Oracle 新鲜度和 Kubernetes 可用性。
+
+文件：
+
+```text
+cpp/observability/
+observability/
+k8s/observability.yaml
+scripts/run-observability-tests.sh
 ```

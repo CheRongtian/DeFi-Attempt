@@ -343,6 +343,12 @@ std::size_t PostgresLiquidationJobStore::InvalidateNonCanonical(
 
 std::size_t PostgresLiquidationJobStore::ReconcileSubmitted()
 {
+    const auto result = ReconcileSubmittedWithStats();
+    return result.completed + result.failed + result.reorged;
+}
+
+LiquidationReconcileResult PostgresLiquidationJobStore::ReconcileSubmittedWithStats()
+{
     auto connection = implementation_->Connect();
     pqxx::work transaction{connection};
     const auto updated = transaction.exec(
@@ -359,10 +365,19 @@ std::size_t PostgresLiquidationJobStore::ReconcileSubmitted()
             WHERE job.tx_job_id = tx.job_id
               AND job.status = 'Submitted'
               AND tx.status IN ('Finalized', 'Failed', 'Reorged')
+            RETURNING tx.status
         )SQL"
     );
     transaction.commit();
-    return static_cast<std::size_t>(updated.affected_rows());
+    LiquidationReconcileResult result;
+    for(const auto& row : updated)
+    {
+        const auto status = row["status"].as<std::string>();
+        if(status == "Finalized") ++result.completed;
+        else if(status == "Reorged") ++result.reorged;
+        else ++result.failed;
+    }
+    return result;
 }
 
 }

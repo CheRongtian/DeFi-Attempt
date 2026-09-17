@@ -15,6 +15,8 @@
 #include "dlp/indexer/Indexer.hpp"
 #include "dlp/indexer/PostgresStore.hpp"
 #include "dlp/indexer/RpcChainClient.hpp"
+#include "dlp/observability/Metrics.hpp"
+#include "dlp/observability/RpcMetrics.hpp"
 
 namespace
 {
@@ -92,6 +94,26 @@ int main(int argc, char* argv[])
             )
         };
         dlp::indexer::Indexer indexer{chain, store, contracts, StartBlock()};
+        dlp::observability::ServiceMetrics metrics{
+            "indexer",
+            EnvironmentOrDefault("DLP_METRICS_ADDRESS", "0.0.0.0"),
+            static_cast<std::uint16_t>(std::stoul(EnvironmentOrDefault("DLP_METRICS_PORT", "9101")))
+        };
+        dlp::observability::RpcMetrics rpcMetrics{metrics};
+        auto& indexedBlocks = metrics.AddCounter(
+            "indexed_blocks_total",
+            "Total canonical blocks committed by the indexer"
+        );
+        auto& reorgs = metrics.AddCounter("indexer_reorgs_total", "Total indexer chain rewinds");
+        auto& errors = metrics.AddCounter("indexer_errors_total", "Total failed indexer iterations");
+        auto& indexedHeight = metrics.AddGauge(
+            "indexed_block_height",
+            "Latest canonical block committed by the indexer"
+        );
+        auto& chainHeight = metrics.AddGauge("chain_head_height", "Latest chain head seen by the indexer");
+        auto& lag = metrics.AddGauge("indexer_lag_blocks", "Blocks between chain head and index cursor");
+        std::uint64_t observedReorgs = 0;
+        metrics.SetReady(true);
 
         do
         {
@@ -101,10 +123,21 @@ int main(int argc, char* argv[])
                 if(indexed != 0U)
                 {
                     std::cout << "indexed " << indexed << " block(s)\n";
+                    indexedBlocks.Increment(static_cast<double>(indexed));
+                }
+                const auto& status = indexer.Status();
+                indexedHeight.Set(static_cast<double>(status.indexedBlock));
+                chainHeight.Set(static_cast<double>(status.chainHead));
+                lag.Set(static_cast<double>(status.chainHead - status.indexedBlock));
+                if(status.reorgs > observedReorgs)
+                {
+                    reorgs.Increment(static_cast<double>(status.reorgs - observedReorgs));
+                    observedReorgs = status.reorgs;
                 }
             }
             catch(const std::exception& exception)
             {
+                errors.Increment();
                 if(runOnce)
                 {
                     throw;

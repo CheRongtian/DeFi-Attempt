@@ -167,6 +167,40 @@ do
     kube rollout status "deployment/$deployment" -n "$NAMESPACE" --timeout="$WAIT_TIMEOUT"
 done
 
+kube create configmap prometheus-config \
+    --namespace "$NAMESPACE" \
+    --from-file=prometheus.yml="$PROJECT_ROOT/observability/prometheus/prometheus.yml" \
+    --dry-run=client \
+    --output=yaml | kube apply -f -
+kube create configmap grafana-datasource \
+    --namespace "$NAMESPACE" \
+    --from-file=prometheus.yaml="$PROJECT_ROOT/observability/grafana/provisioning/datasources/prometheus.yaml" \
+    --dry-run=client \
+    --output=yaml | kube apply -f -
+kube create configmap grafana-dashboard-provider \
+    --namespace "$NAMESPACE" \
+    --from-file=provider.yaml="$PROJECT_ROOT/observability/grafana/provisioning/dashboards/provider.yaml" \
+    --dry-run=client \
+    --output=yaml | kube apply -f -
+kube create configmap grafana-dashboard \
+    --namespace "$NAMESPACE" \
+    --from-file=dlp-overview.json="$PROJECT_ROOT/observability/grafana/dashboards/dlp-overview.json" \
+    --dry-run=client \
+    --output=yaml | kube apply -f -
+kube apply -f "$PROJECT_ROOT/k8s/observability.yaml"
+
+if [[ $cluster_exists == true ]]
+then
+    kube rollout restart deployment/prometheus deployment/grafana -n "$NAMESPACE"
+fi
+
+for deployment in kube-state-metrics prometheus grafana
+do
+    kube rollout status "deployment/$deployment" -n "$NAMESPACE" --timeout="$WAIT_TIMEOUT"
+done
+
 printf '\nThe kind deployment is running with three Oracle Coordinator replicas.\n'
 printf '  API: http://127.0.0.1:18080\n'
+printf '  Prometheus: http://127.0.0.1:19090\n'
+printf '  Grafana: http://127.0.0.1:13000/d/dlp-overview\n'
 printf '  Scale: ./scripts/scale-kind.sh\n'

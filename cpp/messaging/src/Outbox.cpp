@@ -117,6 +117,14 @@ std::vector<EventEnvelope> PostgresOutboxStore::LoadUnpublished(std::size_t limi
     return events;
 }
 
+std::size_t PostgresOutboxStore::CountUnpublished() const
+{
+    auto connection = implementation_->Connect();
+    pqxx::read_transaction transaction{connection};
+    const auto rows = transaction.exec("SELECT COUNT(*) AS count FROM outbox_events WHERE published_at IS NULL");
+    return rows.front()["count"].as<std::size_t>();
+}
+
 void PostgresOutboxStore::MarkPublished(std::string_view eventId)
 {
     auto connection = implementation_->Connect();

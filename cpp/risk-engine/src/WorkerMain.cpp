@@ -12,6 +12,8 @@
 
 #include "dlp/ethereum/RpcClient.hpp"
 #include "dlp/messaging/JetStream.hpp"
+#include "dlp/observability/Metrics.hpp"
+#include "dlp/observability/RpcMetrics.hpp"
 #include "dlp/risk/PostgresRiskRepository.hpp"
 #include "dlp/risk/RiskWorker.hpp"
 
@@ -56,6 +58,25 @@ int main(int argc, char* argv[])
             "DLP_DATABASE_URL",
             "postgresql://dlp:dlp@127.0.0.1:5432/dlp"
         );
+        dlp::observability::ServiceMetrics metrics{
+            "risk-engine",
+            EnvironmentOrDefault("DLP_METRICS_ADDRESS", "0.0.0.0"),
+            static_cast<std::uint16_t>(UnsignedEnvironment("DLP_METRICS_PORT", "9103"))
+        };
+        dlp::observability::RpcMetrics rpcMetrics{metrics};
+        auto& scanned = metrics.AddCounter(
+            "risk_positions_scanned_total",
+            "Total positions evaluated by the risk engine"
+        );
+        auto& candidates = metrics.AddCounter(
+            "liquidation_candidates_total",
+            "Total liquidation candidates produced by the risk engine"
+        );
+        auto& currentCandidates = metrics.AddGauge(
+            "liquidation_candidates",
+            "Liquidation candidates produced by the latest scan"
+        );
+        auto& errors = metrics.AddCounter("risk_engine_errors_total", "Total failed risk iterations");
         dlp::ethereum::RpcClient rpc{EnvironmentOrDefault("DLP_RPC_URL", "http://127.0.0.1:8545")};
         dlp::risk::PostgresRiskRepository repository{databaseUrl};
         dlp::risk::RiskEngine engine{repository, rpc.GetChainId()};
@@ -75,6 +96,7 @@ int main(int argc, char* argv[])
             UnsignedEnvironment("DLP_RISK_RESCAN_SECONDS", "30")
         };
         auto nextRescan = std::chrono::steady_clock::now() + rescanInterval;
+        metrics.SetReady(true);
         do
         {
             try
@@ -83,7 +105,11 @@ int main(int argc, char* argv[])
                 const auto now = static_cast<std::uint64_t>(std::time(nullptr));
                 if(message.has_value())
                 {
-                    if(worker.Process(message->Event().eventId, now))
+                    const auto result = worker.ProcessWithStats(message->Event().eventId, now);
+                    scanned.Increment(static_cast<double>(result.positionsScanned));
+                    candidates.Increment(static_cast<double>(result.liquidationCandidates));
+                    currentCandidates.Set(static_cast<double>(result.liquidationCandidates));
+                    if(result.committed)
                     {
                         std::cout << "processed risk event " << message->Event().eventId << '\n';
                     }
@@ -91,7 +117,11 @@ int main(int argc, char* argv[])
                 }
                 if(std::chrono::steady_clock::now() >= nextRescan)
                 {
-                    if(worker.Rescan(now))
+                    const auto result = worker.RescanWithStats(now);
+                    scanned.Increment(static_cast<double>(result.positionsScanned));
+                    candidates.Increment(static_cast<double>(result.liquidationCandidates));
+                    currentCandidates.Set(static_cast<double>(result.liquidationCandidates));
+                    if(result.committed)
                     {
                         std::cout << "completed periodic risk rescan\n";
                     }
@@ -100,6 +130,7 @@ int main(int argc, char* argv[])
             }
             catch(const std::exception& exception)
             {
+                errors.Increment();
                 if(runOnce)
                 {
                     throw;

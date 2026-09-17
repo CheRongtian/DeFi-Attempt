@@ -10,6 +10,7 @@ include(CTest)
 include(cmake/HomebrewPostgreSQL.cmake)
 
 add_subdirectory(cpp/common)
+add_subdirectory(cpp/observability)
 add_subdirectory(cpp/messaging)
 add_subdirectory(cpp/indexer)
 add_subdirectory(cpp/risk-engine)

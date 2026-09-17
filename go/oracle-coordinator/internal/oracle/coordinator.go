@@ -23,10 +23,11 @@ type Coordinator struct {
 	store     *Store
 	providers []Provider
 	config    CoordinatorConfig
+	metrics   *Metrics
 }
 
-func NewCoordinator(store *Store, providers []Provider, config CoordinatorConfig) Coordinator {
-	return Coordinator{store: store, providers: providers, config: config}
+func NewCoordinator(store *Store, providers []Provider, config CoordinatorConfig, metrics *Metrics) Coordinator {
+	return Coordinator{store: store, providers: providers, config: config, metrics: metrics}
 }
 
 func (coordinator Coordinator) Run(ctx context.Context) {
@@ -56,33 +57,39 @@ func (coordinator Coordinator) publish(ctx context.Context) {
 		return
 	}
 	if err != nil {
+		coordinator.metrics.ObserveFailure()
 		log.Printf("oracle fencing failed: %v", err)
 		return
 	}
+	coordinator.metrics.ObserveFence(lease.FencingToken)
 
 	price, quotes, err := Median(ctx, coordinator.providers, coordinator.config.Asset)
 	if err != nil {
+		coordinator.metrics.ObserveFailure()
 		log.Printf("oracle aggregation failed: %v", err)
 		return
 	}
 
+	reportedAt := time.Now().Unix()
 	publication, created, err := coordinator.store.CreatePublication(ctx, PublicationRequest{
 		ChainID:    coordinator.config.ChainID,
 		Oracle:     coordinator.config.Oracle,
 		Asset:      coordinator.config.Asset,
 		Wallet:     coordinator.config.Wallet,
 		Price:      price,
-		ReportedAt: time.Now().Unix(),
+		ReportedAt: reportedAt,
 		Lease:      lease,
 	})
 	if errors.Is(err, ErrLeaseHeld) {
 		return
 	}
 	if err != nil {
+		coordinator.metrics.ObserveFailure()
 		log.Printf("oracle publication failed: %v", err)
 		return
 	}
 	if created {
+		coordinator.metrics.ObservePublication(publication.RoundID, reportedAt)
 		log.Printf(
 			"queued oracle round %d at price %d from %d providers",
 			publication.RoundID,

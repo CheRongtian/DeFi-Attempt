@@ -6,6 +6,8 @@ contracts/out/
 contracts/broadcast/
 build/
 cmake-build-*/
+artifacts/recovery/
+artifacts/observability/
 go/oracle-coordinator/oracle-coordinator
 .idea/
 .env
@@ -13,3 +15,4 @@ go/oracle-coordinator/oracle-coordinator
 !.env.example
 *.swp
 *.swo
+*.log

@@ -14,6 +14,8 @@
 
 #include "dlp/ethereum/Transaction.hpp"
 #include "dlp/ethereum/RpcEndpoints.hpp"
+#include "dlp/observability/Metrics.hpp"
+#include "dlp/observability/RpcMetrics.hpp"
 #include "dlp/tx/PostgresTransactionStore.hpp"
 #include "dlp/tx/TransactionRpc.hpp"
 #include "dlp/tx/TxManager.hpp"
@@ -91,6 +93,22 @@ int main(int argc, char* argv[])
             std::next(transactionRpcs.begin()),
             transactionRpcs.end()
         );
+        dlp::observability::ServiceMetrics metrics{
+            "tx-manager",
+            EnvironmentOrDefault("DLP_METRICS_ADDRESS", "0.0.0.0"),
+            static_cast<std::uint16_t>(UnsignedEnvironment("DLP_METRICS_PORT", "9104"))
+        };
+        dlp::observability::RpcMetrics rpcMetrics{metrics};
+        auto& pending = metrics.AddGauge("tx_pending_total", "Current pending or submitted transactions");
+        auto& included = metrics.AddCounter("tx_included_total", "Total transactions included on chain");
+        auto& finalized = metrics.AddCounter("tx_finalized_total", "Total finalized transactions");
+        auto& reorged = metrics.AddCounter("tx_reorged_total", "Total transactions invalidated by reorgs");
+        auto& failed = metrics.AddCounter("tx_failed_total", "Total failed transactions");
+        auto& confirmationBlocks = metrics.AddHistogram(
+            "tx_confirmation_latency_blocks",
+            "Blocks from transaction submission through inclusion",
+            {1.0, 2.0, 3.0, 5.0, 8.0, 13.0, 21.0}
+        );
         dlp::tx::RpcTransactionClient rpc{transactionRpcs.front(), std::move(additionalRpcs)};
         dlp::ethereum::Secp256k1Signer signer{RequiredEnvironment("DLP_OPERATOR_PRIVATE_KEY")};
         dlp::tx::TxManager manager{
@@ -103,12 +121,22 @@ int main(int argc, char* argv[])
                 static_cast<std::uint32_t>(UnsignedEnvironment("DLP_TX_MAX_RETRIES", "3"))
             }
         };
+        metrics.SetReady(true);
 
         do
         {
             try
             {
-                manager.RunOnce();
+                const auto result = manager.RunOnce();
+                pending.Set(static_cast<double>(result.active));
+                included.Increment(static_cast<double>(result.included));
+                finalized.Increment(static_cast<double>(result.finalized));
+                reorged.Increment(static_cast<double>(result.reorged));
+                failed.Increment(static_cast<double>(result.failed));
+                for(const auto blocks : result.confirmationBlocks)
+                {
+                    confirmationBlocks.Observe(static_cast<double>(blocks));
+                }
             }
             catch(const std::exception& exception)
             {

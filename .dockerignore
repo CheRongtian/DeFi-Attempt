@@ -3,6 +3,7 @@
 .env.*
 build
 cmake-build-*
+artifacts
 contracts/broadcast
 contracts/cache
 contracts/out

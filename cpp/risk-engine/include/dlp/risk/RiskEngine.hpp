@@ -12,6 +12,12 @@
 namespace dlp::risk
 {
 
+struct RiskScanResult
+{
+    std::size_t positionsScanned{0};
+    std::vector<LiquidationCandidate> candidates;
+};
+
 class RiskEngine final
 {
 public:
@@ -23,6 +29,10 @@ public:
         std::uint64_t evaluatedAt
     ) const;
     [[nodiscard]] std::vector<LiquidationCandidate> Scan(
+        std::size_t limit,
+        std::uint64_t evaluatedAt
+    ) const;
+    [[nodiscard]] RiskScanResult ScanWithStats(
         std::size_t limit,
         std::uint64_t evaluatedAt
     ) const;

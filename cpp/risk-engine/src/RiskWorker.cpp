@@ -126,15 +126,34 @@ RiskWorker::RiskWorker(RiskEngine& engine, RiskEventStore& store, std::size_t sc
 
 bool RiskWorker::Process(std::string_view sourceEventId, std::uint64_t evaluatedAt)
 {
-    return store_.CommitScan(sourceEventId, engine_.Scan(scanLimit_, evaluatedAt));
+    return ProcessWithStats(sourceEventId, evaluatedAt).committed;
 }
 
 bool RiskWorker::Rescan(std::uint64_t evaluatedAt)
 {
+    return RescanWithStats(evaluatedAt).committed;
+}
+
+RiskWorkResult RiskWorker::ProcessWithStats(
+    std::string_view sourceEventId,
+    std::uint64_t evaluatedAt
+)
+{
+    auto scan = engine_.ScanWithStats(scanLimit_, evaluatedAt);
+    const auto candidateCount = scan.candidates.size();
+    return RiskWorkResult{
+        store_.CommitScan(sourceEventId, scan.candidates),
+        scan.positionsScanned,
+        candidateCount
+    };
+}
+
+RiskWorkResult RiskWorker::RescanWithStats(std::uint64_t evaluatedAt)
+{
     const auto market = engine_.LoadMarket();
     const auto sourceEventId = "risk.rescan:" + market.chainId.ToDecimal() + ":"
         + std::to_string(market.canonicalVersion) + ":" + std::to_string(evaluatedAt);
-    return Process(sourceEventId, evaluatedAt);
+    return ProcessWithStats(sourceEventId, evaluatedAt);
 }
 
 }

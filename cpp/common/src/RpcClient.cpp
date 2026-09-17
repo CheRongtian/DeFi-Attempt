@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <chrono>
 #include <string_view>
 #include <utility>
 
@@ -24,6 +25,57 @@ namespace beast = boost::beast;
 namespace http = beast::http;
 using Tcp = asio::ip::tcp;
 using Json = nlohmann::json;
+
+std::atomic<RpcObserver*> rpcObserver{nullptr};
+
+class RpcObservation final
+{
+public:
+    explicit RpcObservation(std::string_view method)
+        : method_(method), startedAt_(std::chrono::steady_clock::now())
+    {
+    }
+
+    ~RpcObservation()
+    {
+        if(auto* observer = rpcObserver.load(std::memory_order_acquire); observer != nullptr)
+        {
+            observer->Observe(method_, std::chrono::steady_clock::now() - startedAt_, succeeded_);
+        }
+    }
+
+    void Succeed() noexcept
+    {
+        succeeded_ = true;
+    }
+
+private:
+    std::string_view method_;
+    std::chrono::steady_clock::time_point startedAt_;
+    bool succeeded_{false};
+};
+
+template<typename Operation>
+void RunTimedOperation(
+    asio::io_context& context,
+    beast::tcp_stream& stream,
+    std::chrono::milliseconds timeout,
+    Operation&& operation
+)
+{
+    beast::error_code operationError;
+    stream.expires_after(timeout);
+    std::forward<Operation>(operation)(
+        [&operationError](beast::error_code error, auto...) { operationError = error; }
+    );
+    context.run();
+    context.restart();
+
+    if(operationError)
+    {
+        throw boost::system::system_error(operationError);
+    }
+}
 
 struct ParsedEndpoint
 {
@@ -200,6 +252,7 @@ public:
 
     [[nodiscard]] Json Call(std::string_view method, Json parameters) const
     {
+        RpcObservation observation{method};
         const auto requestId = nextRequestId_.fetch_add(1, std::memory_order_relaxed);
         const Json payload{
             {"jsonrpc", "2.0"},
@@ -213,8 +266,10 @@ public:
             asio::io_context context;
             Tcp::resolver resolver{context};
             beast::tcp_stream stream{context};
-            stream.expires_after(timeout_);
-            stream.connect(resolver.resolve(endpoint_.host, endpoint_.port));
+            const auto endpoints = resolver.resolve(endpoint_.host, endpoint_.port);
+            RunTimedOperation(context, stream, timeout_, [&](auto&& handler) {
+                stream.async_connect(endpoints, std::forward<decltype(handler)>(handler));
+            });
 
             http::request<http::string_body> request{http::verb::post, endpoint_.target, 11};
             request.set(http::field::host, endpoint_.host + ":" + endpoint_.port);
@@ -223,11 +278,15 @@ public:
             request.body() = payload.dump();
             request.prepare_payload();
 
-            http::write(stream, request);
+            RunTimedOperation(context, stream, timeout_, [&](auto&& handler) {
+                http::async_write(stream, request, std::forward<decltype(handler)>(handler));
+            });
 
             beast::flat_buffer buffer;
             http::response<http::string_body> response;
-            http::read(stream, buffer, response);
+            RunTimedOperation(context, stream, timeout_, [&](auto&& handler) {
+                http::async_read(stream, buffer, response, std::forward<decltype(handler)>(handler));
+            });
 
             beast::error_code shutdownError;
             stream.socket().shutdown(Tcp::socket::shutdown_both, shutdownError);
@@ -263,6 +322,7 @@ public:
                 throw RpcException(RpcErrorKind::InvalidResponse, "RPC response does not contain a result");
             }
 
+            observation.Succeed();
             return decoded["result"];
         }
         catch(const RpcException&)
@@ -284,6 +344,27 @@ private:
     std::chrono::milliseconds timeout_;
     mutable std::atomic<std::uint64_t> nextRequestId_{1};
 };
+
+void SetRpcObserver(RpcObserver* observer) noexcept
+{
+    rpcObserver.store(observer, std::memory_order_release);
+}
+
+void ObserveRpcFailover() noexcept
+{
+    if(auto* observer = rpcObserver.load(std::memory_order_acquire); observer != nullptr)
+    {
+        observer->ObserveFailover();
+    }
+}
+
+void ObserveRpcBroadcastSuccess() noexcept
+{
+    if(auto* observer = rpcObserver.load(std::memory_order_acquire); observer != nullptr)
+    {
+        observer->ObserveBroadcastSuccess();
+    }
+}
 
 RpcException::RpcException(RpcErrorKind kind, std::string message)
     : std::runtime_error(std::move(message)), kind_(kind)
@@ -313,7 +394,12 @@ Uint256 RpcClient::GetChainId() const
 Uint256 RpcClient::GetBlockNumber() const
 {
     const auto result = implementation_->Call("eth_blockNumber", Json::array());
-    return ParseQuantity(Json{{"result", result}}, "result");
+    auto blockNumber = ParseQuantity(Json{{"result", result}}, "result");
+    if(auto* observer = rpcObserver.load(std::memory_order_acquire); observer != nullptr)
+    {
+        observer->ObserveBlockHeight(blockNumber.ToUint64());
+    }
+    return blockNumber;
 }
 
 std::optional<BlockHeader> RpcClient::GetBlockByNumber(const Uint256& number) const

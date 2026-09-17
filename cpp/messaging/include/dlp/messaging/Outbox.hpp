@@ -40,6 +40,7 @@ public:
     PostgresOutboxStore& operator=(const PostgresOutboxStore&) = delete;
 
     [[nodiscard]] std::vector<EventEnvelope> LoadUnpublished(std::size_t limit) const override;
+    [[nodiscard]] std::size_t CountUnpublished() const;
     void MarkPublished(std::string_view eventId) override;
 
 private:

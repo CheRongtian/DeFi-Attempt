@@ -222,11 +222,13 @@ void TxManager::Poll(TxJob& job)
     store_.Save(job);
 }
 
-void TxManager::RunOnce()
+TxManagerRunResult TxManager::RunOnce()
 {
     auto jobs = store_.LoadActive(chainId_, signer_.GetAddress());
+    TxManagerRunResult result;
     for(auto& job : jobs)
     {
+        const auto previousStatus = job.status;
         if(job.status == TxStatus::Pending)
         {
             Submit(job, !job.errorMessage.empty());
@@ -235,7 +237,38 @@ void TxManager::RunOnce()
         {
             Poll(job);
         }
+
+        if(job.status == TxStatus::Pending || job.status == TxStatus::Submitted)
+        {
+            ++result.active;
+        }
+        if(previousStatus != job.status)
+        {
+            if(job.status == TxStatus::Included)
+            {
+                ++result.included;
+            }
+            else if(job.status == TxStatus::Finalized)
+            {
+                ++result.finalized;
+                if(job.submittedBlockNumber.has_value() && job.includedBlockNumber.has_value())
+                {
+                    result.confirmationBlocks.push_back(
+                        *job.includedBlockNumber - *job.submittedBlockNumber + 1U
+                    );
+                }
+            }
+            else if(job.status == TxStatus::Reorged)
+            {
+                ++result.reorged;
+            }
+            else if(job.status == TxStatus::Failed)
+            {
+                ++result.failed;
+            }
+        }
     }
+    return result;
 }
 
 }

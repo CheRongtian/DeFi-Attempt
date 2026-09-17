@@ -61,6 +61,7 @@ public:
         }
         if(transactionHash.has_value())
         {
+            ethereum::ObserveRpcBroadcastSuccess();
             return *transactionHash;
         }
         std::rethrow_exception(lastFailure);
@@ -79,6 +80,10 @@ private:
             {
                 Validate(index);
                 auto result = operation(*endpoints_[index]);
+                if(index != start)
+                {
+                    ethereum::ObserveRpcFailover();
+                }
                 activeIndex_ = index;
                 return result;
             }

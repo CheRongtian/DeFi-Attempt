@@ -1,6 +1,7 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <iostream>
@@ -9,6 +10,7 @@
 
 #include "dlp/messaging/JetStream.hpp"
 #include "dlp/messaging/Outbox.hpp"
+#include "dlp/observability/Metrics.hpp"
 
 namespace
 {
@@ -51,6 +53,18 @@ int main(int argc, char* argv[])
         };
         jetStream.EnsureEventStream();
         dlp::messaging::OutboxPublisher publisher{store, jetStream};
+        dlp::observability::ServiceMetrics metrics{
+            "outbox-publisher",
+            EnvironmentOrDefault("DLP_METRICS_ADDRESS", "0.0.0.0"),
+            static_cast<std::uint16_t>(std::stoul(EnvironmentOrDefault("DLP_METRICS_PORT", "9102")))
+        };
+        auto& publishedTotal = metrics.AddCounter(
+            "outbox_published_total",
+            "Total outbox events published to JetStream"
+        );
+        auto& pending = metrics.AddGauge("outbox_pending", "Current unpublished outbox events");
+        auto& errors = metrics.AddCounter("outbox_publish_errors_total", "Total outbox publish failures");
+        metrics.SetReady(true);
 
         do
         {
@@ -60,10 +74,13 @@ int main(int argc, char* argv[])
                 if(published != 0U)
                 {
                     std::cout << "published " << published << " outbox event(s)\n";
+                    publishedTotal.Increment(static_cast<double>(published));
                 }
+                pending.Set(static_cast<double>(store.CountUnpublished()));
             }
             catch(const std::exception& exception)
             {
+                errors.Increment();
                 if(runOnce)
                 {
                     throw;

@@ -12,6 +12,13 @@
 namespace dlp::indexer
 {
 
+struct IndexerStatus
+{
+    std::uint64_t chainHead{0};
+    std::uint64_t indexedBlock{0};
+    std::uint64_t reorgs{0};
+};
+
 class Indexer final
 {
 public:
@@ -23,6 +30,7 @@ public:
     );
 
     [[nodiscard]] std::size_t SyncToHead();
+    [[nodiscard]] const IndexerStatus& Status() const noexcept;
 
 private:
     [[nodiscard]] std::optional<SyncCursor> ReconcileCursor(
@@ -47,6 +55,7 @@ private:
     ChainContracts contracts_;
     std::uint64_t startBlock_;
     StateProjector projector_;
+    IndexerStatus status_;
 };
 
 }

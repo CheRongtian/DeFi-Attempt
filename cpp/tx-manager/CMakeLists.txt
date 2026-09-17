@@ -7,6 +7,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(CMAKE_CXX_EXTENSIONS OFF)
     include(CTest)
     add_subdirectory(../common ${CMAKE_CURRENT_BINARY_DIR}/common)
+    add_subdirectory(../observability ${CMAKE_CURRENT_BINARY_DIR}/observability)
 endif()
 
 include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/HomebrewPostgreSQL.cmake)
@@ -31,7 +32,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 endif()
 
 add_executable(dlp_tx_manager src/Main.cpp)
-target_link_libraries(dlp_tx_manager PRIVATE DLP::tx_manager_core Threads::Threads)
+target_link_libraries(dlp_tx_manager PRIVATE DLP::tx_manager_core DLP::observability Threads::Threads)
 
 if(BUILD_TESTING)
     find_package(GTest REQUIRED)
