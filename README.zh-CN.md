@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-一个使用 Solidity 开发的超额抵押借贷协议，包含索引、风险扫描、交易管理、自动清算和 PostgreSQL REST API 等 C++20 服务。Go Oracle Coordinator 通过 Leader Election 和数据库 Fencing 聚合并发布价格。完整系统可通过 Docker Compose 或本地 kind 集群运行，并按请求用途进行 RPC 故障切换。
+一个使用 Solidity 开发的超额抵押借贷协议，包含索引、风险扫描、交易管理、自动清算和 PostgreSQL REST API 等 C++20 服务。Go Oracle Coordinator 通过 Leader Election 和数据库 Fencing 聚合并发布价格。完整系统可通过 Docker Compose 或本地 kind 集群运行，并按请求用途进行 RPC 故障切换。在 macOS 上，Frontend 可以选择调用宿主机原生 Apple Metal 期权定价工具。
 
 ## 项目结构
 
@@ -161,6 +161,7 @@ DeFi/
 │   ├── configure-frontend.sh
 │   ├── deploy-local.sh
 │   ├── frontend.sh
+│   ├── metal-option-pricer.sh
 │   ├── prepare-frontend-demo.sh
 │   ├── run-containers.sh
 │   ├── run-final-demo.sh
@@ -169,6 +170,12 @@ DeFi/
 │   ├── run-observability-tests.sh
 │   ├── run-recovery-tests.sh
 │   └── scale-kind.sh
+├── tools/
+│   └── metal-option-pricer/
+│       ├── include/dlp/options/
+│       ├── shaders/
+│       ├── src/
+│       └── CMakeLists.txt
 ├── tests/
 │   └── golden/
 │       └── risk_vectors.json
@@ -196,6 +203,7 @@ DeFi/
 - Docker 和 Docker Compose
 - 用于 Kubernetes 部署的 `kubectl` 与 kind
 - Foundry 与 Anvil，用于本地部署和 RPC 集成测试
+- Xcode Command Line Tools 及 Metal 编译器，用于可选的 macOS 期权定价功能
 - 可用的网络连接，用于安装 Foundry、下载 Solc，以及首次配置 CMake 时获取固定版本的 Ethereum Keccak、Prometheus C++ 与 NATS C 依赖
 
 ## 安装 Foundry
@@ -432,13 +440,31 @@ Sepolia 范围只包含只读 RPC 连通。只需在已忽略的 `.env.sepolia` 
 
 脚本确认主 RPC、备用 RPC 和浏览器 RPC 均返回 Sepolia Chain ID `11155111`，不会发送交易。
 
-完整协议演示继续运行在已经验收的本地 kind 与 Anvil 环境：
+完整协议演示继续运行在已经验收的本地 kind 与 Anvil 环境。日常重新启动使用：
+
+```bash
+./scripts/run-final-demo.sh
+```
+
+首次完整运行、部署或 Kubernetes 配置变化，以及已有集群状态异常时使用 `--clean`：
 
 ```bash
 ./scripts/run-final-demo.sh --clean
 ```
 
-该命令先检查 Sepolia RPC 接入，再启动本地分布式系统、准备确定性的本地 Demo 账户并启动 Frontend。本地 API 地址为 `http://127.0.0.1:18080`，Prometheus 地址为 `http://127.0.0.1:19090`，Grafana 地址为 `http://127.0.0.1:13000/d/dlp-overview`，Frontend 地址为 `http://127.0.0.1:4173`。
+该命令会检查 Sepolia RPC 接入，启动本地分布式系统，准备确定性的本地 Demo 账户，构建并启动宿主机原生 Metal 期权服务，然后使用 `.env.kind` 启动 Frontend。Frontend 退出时，Metal 子进程会同步停止。
+
+本地 API 地址为 `http://127.0.0.1:18080`，Metal 健康检查地址为 `http://127.0.0.1:18081/health`，Prometheus 地址为 `http://127.0.0.1:19090`，Grafana 地址为 `http://127.0.0.1:13000/d/dlp-overview`，Frontend 地址为 `http://127.0.0.1:4173`。Metal 服务根路径不提供网页，访问 `GET /` 会按设计返回 `route not found`。
+
+正常使用只需运行 `run-final-demo.sh`。需要单独启动 Frontend 时，必须传入与当前后端对应的环境文件：
+
+```text
+run-local.sh       → ./scripts/frontend.sh .env.local
+run-containers.sh  → ./scripts/frontend.sh .env.containers
+run-kind.sh        → ./scripts/frontend.sh .env.kind
+```
+
+混用环境文件会触发 Frontend 的 API 市场与合约地址不匹配提示。
 
 在 Frontend 中完成本地钱包流程，并使用现有本地脚本演示清算、可观测性和故障恢复：
 
@@ -705,7 +731,7 @@ scripts/run-observability-tests.sh
 
 ### Frontend 协议控制台
 
-React 与 TypeScript Dashboard 通过 wagmi 和 viem 连接浏览器钱包，展示已索引的市场、仓位、清算历史、后端新鲜度和 C++ 确定性风险模拟结果。用户交易先在钱包中批准和签名，再直接发送到 Solidity 协议。
+React 与 TypeScript Dashboard 通过 wagmi 和 viem 连接浏览器钱包，展示已索引的市场、仓位、清算历史、后端新鲜度和 C++ 确定性风险模拟结果。用户交易先在钱包中批准和签名，再直接发送到 Solidity 协议。Risk 页面还提供默认关闭的 Apple Metal 期权分析开关。
 
 文件：
 
@@ -713,6 +739,17 @@ React 与 TypeScript Dashboard 通过 wagmi 和 viem 连接浏览器钱包，展
 frontend/
 scripts/configure-frontend.sh
 scripts/prepare-frontend-demo.sh
+```
+
+### Apple Metal 期权分析
+
+该 macOS 宿主机原生工具使用 Metal Monte Carlo Kernel 计算欧式看涨与看跌期权价格，并与 CPU `double` 精度的 Black–Scholes 解析价对比。它独立于协议 Risk Engine、钱包、RPC、Docker 和 Kubernetes。只有用户在 Frontend 的 Risk 页面开启开关后，Frontend 才会调用该服务。
+
+文件：
+
+```text
+tools/metal-option-pricer/
+scripts/metal-option-pricer.sh
 ```
 
 ### Sepolia RPC 接入与本地最终演示

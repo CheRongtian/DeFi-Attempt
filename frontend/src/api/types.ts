@@ -72,3 +72,27 @@ export interface ApiEnvelope<T> {
   data: T
   freshness?: Freshness
 }
+
+export type OptionType = 'call' | 'put'
+
+export interface OptionPricingInput {
+  optionType: OptionType
+  spot: number
+  strike: number
+  expiryYears: number
+  volatility: number
+  riskFreeRate: number
+  paths: number
+  seed: number
+}
+
+export interface OptionPricingResult {
+  optionType: OptionType
+  monteCarloPrice: number
+  analyticPrice: number
+  standardError: number
+  absoluteDifference: number
+  paths: number
+  elapsedMilliseconds: number
+  device: string
+}

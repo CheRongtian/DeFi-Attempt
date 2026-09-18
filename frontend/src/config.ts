@@ -2,6 +2,7 @@ import { getAddress, isAddress, type Address } from 'viem'
 
 export interface AppConfig {
   apiBaseUrl: string
+  optionPricerBaseUrl: string
   rpcUrl: string
   chainId: number
   chainName: string
@@ -36,6 +37,7 @@ function readAddress(environment: Environment, key: string, issues: string[]): A
 export function parseAppConfig(environment: Environment): ConfigResult {
   const issues: string[] = []
   const apiBaseUrl = environment.VITE_API_BASE_URL?.replace(/\/$/, '')
+  const optionPricerBaseUrl = environment.VITE_OPTION_PRICER_BASE_URL?.replace(/\/$/, '') || '/option-pricer'
   const rpcUrl = environment.VITE_RPC_URL
   const chainId = Number(environment.VITE_CHAIN_ID)
   const chainName = environment.VITE_CHAIN_NAME?.trim()
@@ -82,6 +84,7 @@ export function parseAppConfig(environment: Environment): ConfigResult {
     ok: true,
     value: {
       apiBaseUrl,
+      optionPricerBaseUrl,
       rpcUrl,
       chainId,
       chainName,

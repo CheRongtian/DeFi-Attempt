@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md)
 
-A Solidity-based overcollateralized lending protocol with C++20 services for indexing, risk scanning, transaction management, automated liquidation, and a PostgreSQL-backed REST API. A Go Oracle Coordinator publishes aggregated prices with leader election and database fencing. The complete stack runs through Docker Compose or a local kind cluster with purpose-specific RPC failover.
+A Solidity-based overcollateralized lending protocol with C++20 services for indexing, risk scanning, transaction management, automated liquidation, and a PostgreSQL-backed REST API. A Go Oracle Coordinator publishes aggregated prices with leader election and database fencing. The complete stack runs through Docker Compose or a local kind cluster with purpose-specific RPC failover. On macOS, the Frontend can optionally call a host-native Apple Metal option pricer.
 
 ## Project Structure
 
@@ -161,6 +161,7 @@ DeFi/
 │   ├── configure-frontend.sh
 │   ├── deploy-local.sh
 │   ├── frontend.sh
+│   ├── metal-option-pricer.sh
 │   ├── prepare-frontend-demo.sh
 │   ├── run-containers.sh
 │   ├── run-final-demo.sh
@@ -169,6 +170,12 @@ DeFi/
 │   ├── run-observability-tests.sh
 │   ├── run-recovery-tests.sh
 │   └── scale-kind.sh
+├── tools/
+│   └── metal-option-pricer/
+│       ├── include/dlp/options/
+│       ├── shaders/
+│       ├── src/
+│       └── CMakeLists.txt
 ├── tests/
 │   └── golden/
 │       └── risk_vectors.json
@@ -196,6 +203,7 @@ DeFi/
 - Docker with Docker Compose
 - `kubectl` and kind for the Kubernetes deployment
 - Foundry with Anvil for local deployment and RPC integration
+- Xcode Command Line Tools with the Metal compiler for optional macOS option pricing
 - An internet connection for installing Foundry, downloading Solc, and fetching the pinned Ethereum Keccak, Prometheus C++, and NATS C dependencies on the first CMake configuration
 
 ## Install Foundry
@@ -432,13 +440,31 @@ Sepolia integration is limited to read-only RPC connectivity. Fill the three end
 
 The check confirms that the primary, failover, and browser-facing endpoints all report Sepolia chain ID `11155111`. It does not send a transaction.
 
-The complete protocol demonstration remains in the accepted local kind and Anvil environment:
+The complete protocol demonstration remains in the accepted local kind and Anvil environment. For normal restarts, run:
+
+```bash
+./scripts/run-final-demo.sh
+```
+
+Use `--clean` for the first complete run, after deployment or Kubernetes changes, or when the existing cluster state is invalid:
 
 ```bash
 ./scripts/run-final-demo.sh --clean
 ```
 
-The command first checks Sepolia RPC connectivity, then starts the local distributed stack, prepares the deterministic local demo accounts, and launches the Frontend. The local API is available at `http://127.0.0.1:18080`, Prometheus at `http://127.0.0.1:19090`, Grafana at `http://127.0.0.1:13000/d/dlp-overview`, and the Frontend at `http://127.0.0.1:4173`.
+The command checks Sepolia RPC connectivity, starts the local distributed stack, prepares the deterministic local demo accounts, builds and starts the host-native Metal option service, and launches the Frontend with `.env.kind`. The Metal process is stopped when the Frontend exits.
+
+The local API is available at `http://127.0.0.1:18080`, the Metal health endpoint at `http://127.0.0.1:18081/health`, Prometheus at `http://127.0.0.1:19090`, Grafana at `http://127.0.0.1:13000/d/dlp-overview`, and the Frontend at `http://127.0.0.1:4173`. The Metal service root path has no web page; `GET /` returns `route not found` by design.
+
+`run-final-demo.sh` is the normal one-command entry point. When starting the Frontend independently, pass the environment that belongs to the active backend:
+
+```text
+run-local.sh       → ./scripts/frontend.sh .env.local
+run-containers.sh  → ./scripts/frontend.sh .env.containers
+run-kind.sh        → ./scripts/frontend.sh .env.kind
+```
+
+Mixing these files causes the Frontend to report that API market and configured contract addresses do not match.
 
 Use the Frontend for the local wallet lifecycle and the existing local scripts for liquidation, observability, and recovery:
 
@@ -705,7 +731,7 @@ scripts/run-observability-tests.sh
 
 ### Frontend Protocol Console
 
-The React and TypeScript dashboard connects an injected wallet through wagmi and viem. It displays indexed market and position state, liquidation history, backend freshness, and deterministic C++ risk simulations. User transactions are approved and signed in the wallet before being sent directly to the Solidity protocol.
+The React and TypeScript dashboard connects an injected wallet through wagmi and viem. It displays indexed market and position state, liquidation history, backend freshness, and deterministic C++ risk simulations. User transactions are approved and signed in the wallet before being sent directly to the Solidity protocol. The Risk page also provides a disabled-by-default switch for optional Apple Metal option analytics.
 
 Files:
 
@@ -713,6 +739,17 @@ Files:
 frontend/
 scripts/configure-frontend.sh
 scripts/prepare-frontend-demo.sh
+```
+
+### Apple Metal Option Analytics
+
+The host-native macOS tool prices European calls and puts with a Metal Monte Carlo kernel and compares the result with a CPU `double` Black–Scholes analytic price. It remains independent from the protocol Risk Engine, wallets, RPC, Docker, and Kubernetes. The Frontend calls it only after the user enables the switch on the Risk page.
+
+Files:
+
+```text
+tools/metal-option-pricer/
+scripts/metal-option-pricer.sh
 ```
 
 ### Sepolia RPC Integration and Local Final Demo

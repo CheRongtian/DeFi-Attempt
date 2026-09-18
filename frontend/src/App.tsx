@@ -10,7 +10,8 @@ import {
 } from 'wagmi'
 
 import { ProtocolApi } from './api/client'
-import type { RiskSimulationInput } from './api/types'
+import { OptionPricerApi } from './api/optionPricer'
+import type { OptionPricingInput, RiskSimulationInput } from './api/types'
 import { LiquidationsPage } from './components/LiquidationsPage'
 import { MarketPage } from './components/MarketPage'
 import { PositionPage } from './components/PositionPage'
@@ -52,6 +53,10 @@ function loadable<T>(query: QueryLike<T>): Loadable<T> {
 export function App({ config }: { config: AppConfig }) {
   const [page, setPage] = useState<Page>('market')
   const api = useMemo(() => new ProtocolApi(config.apiBaseUrl), [config.apiBaseUrl])
+  const optionPricer = useMemo(
+    () => new OptionPricerApi(config.optionPricerBaseUrl),
+    [config.optionPricerBaseUrl],
+  )
   const connection = useConnection()
   const connect = useConnect()
   const connectors = useConnectors()
@@ -78,6 +83,9 @@ export function App({ config }: { config: AppConfig }) {
 
   const riskSimulation = useMutation({
     mutationFn: (input: RiskSimulationInput) => api.simulate(input),
+  })
+  const optionPricing = useMutation({
+    mutationFn: (input: OptionPricingInput) => optionPricer.price(input),
   })
   const borrowPreview = useMutation({
     mutationFn: async (amount: string) => {
@@ -153,6 +161,14 @@ export function App({ config }: { config: AppConfig }) {
               error: riskSimulation.error ? errorMessage(riskSimulation.error) : undefined,
             }}
             onSimulate={(input) => riskSimulation.mutate(input)}
+            optionPricing={{
+              result: {
+                data: optionPricing.data,
+                loading: optionPricing.isPending,
+                error: optionPricing.error ? errorMessage(optionPricing.error) : undefined,
+              },
+              onPrice: (input) => optionPricing.mutate(input),
+            }}
           />
         )
     }
