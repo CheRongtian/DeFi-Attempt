@@ -156,11 +156,14 @@ DeFi/
 │   ├── grafana/
 │   └── prometheus/
 ├── scripts/
+│   ├── check-sepolia-rpc.sh
 │   ├── create-liquidation-scenario.sh
 │   ├── configure-frontend.sh
 │   ├── deploy-local.sh
+│   ├── frontend.sh
 │   ├── prepare-frontend-demo.sh
 │   ├── run-containers.sh
+│   ├── run-final-demo.sh
 │   ├── run-kind.sh
 │   ├── run-local.sh
 │   ├── run-observability-tests.sh
@@ -184,6 +187,7 @@ DeFi/
 - macOS 或 Linux
 - Bash 或 Zsh
 - `curl`
+- `jq`
 - Python 3，用于解析可观测性验收结果
 - 支持 C++20 的编译器和 CMake 3.20 或更高版本
 - Node.js 22 或更高版本及 npm
@@ -418,6 +422,32 @@ kubectl --context kind-dlp get lease oracle-coordinator -n dlp
 
 脚本会把 kind 启动结果和每项验收结果写入 `summary.log`，等待全部十个 Prometheus Target 完成首次成功抓取后，再保存 Target 与指标快照。生成的 artifacts 已排除在 Docker build context 之外，写入日志不会再使 C++ 镜像缓存失效。
 
+## Sepolia RPC 接入与最终演示
+
+Sepolia 范围只包含只读 RPC 连通。只需在已忽略的 `.env.sepolia` 中填写三个 Endpoint；无需钱包、私钥、测试 ETH、合约地址、部署或测试网交易。
+
+```bash
+./scripts/check-sepolia-rpc.sh
+```
+
+脚本确认主 RPC、备用 RPC 和浏览器 RPC 均返回 Sepolia Chain ID `11155111`，不会发送交易。
+
+完整协议演示继续运行在已经验收的本地 kind 与 Anvil 环境：
+
+```bash
+./scripts/run-final-demo.sh --clean
+```
+
+该命令先检查 Sepolia RPC 接入，再启动本地分布式系统、准备确定性的本地 Demo 账户并启动 Frontend。本地 API 地址为 `http://127.0.0.1:18080`，Prometheus 地址为 `http://127.0.0.1:19090`，Grafana 地址为 `http://127.0.0.1:13000/d/dlp-overview`，Frontend 地址为 `http://127.0.0.1:4173`。
+
+在 Frontend 中完成本地钱包流程，并使用现有本地脚本演示清算、可观测性和故障恢复：
+
+```bash
+./scripts/create-liquidation-scenario.sh .env.kind
+./scripts/run-observability-tests.sh --clean
+./scripts/run-recovery-tests.sh --clean
+```
+
 ## 已实现功能
 
 ### Mock USDC
@@ -428,7 +458,7 @@ kubectl --context kind-dlp get lease oracle-coordinator -n dlp
 名称：Mock USDC
 符号：mUSDC
 精度：6
-铸造：本地和测试网环境可自由铸造
+铸造：本地演示和测试环境可自由铸造
 ```
 
 文件：
@@ -446,7 +476,7 @@ contracts/test/MockUSDC.t.sol
 名称：Mock WETH
 符号：mWETH
 精度：18
-铸造：本地和测试网环境可自由铸造
+铸造：本地演示和测试环境可自由铸造
 ```
 
 文件：
@@ -682,5 +712,19 @@ React 与 TypeScript Dashboard 通过 wagmi 和 viem 连接浏览器钱包，展
 ```text
 frontend/
 scripts/configure-frontend.sh
+scripts/prepare-frontend-demo.sh
+```
+
+### Sepolia RPC 接入与本地最终演示
+
+Sepolia 边界只验证主 RPC、备用 RPC 和浏览器 RPC 的连通性，不加载私钥，也不发送交易。最终分布式演示复用已经验收的本地 kind 与 Anvil 系统。
+
+文件：
+
+```text
+.env.sepolia.example
+scripts/check-sepolia-rpc.sh
+scripts/run-final-demo.sh
+scripts/run-kind.sh
 scripts/prepare-frontend-demo.sh
 ```

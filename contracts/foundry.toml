@@ -5,4 +5,6 @@ out = "out"
 libs = ["lib"]
 solc_version = "0.8.36"
 remappings = ["@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"]
-fs_permissions = [{ access = "read", path = "../tests/golden" }]
+fs_permissions = [
+    { access = "read", path = "../tests/golden" },
+]

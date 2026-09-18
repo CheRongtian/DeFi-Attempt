@@ -46,6 +46,9 @@ spec:
                 name: dlp-runtime
             - configMapRef:
                 name: dlp-contracts
+            - secretRef:
+                name: dlp-network
+                optional: true
           env:
             - name: DLP_METRICS_PORT
               value: "9101"
@@ -128,6 +131,9 @@ spec:
           envFrom:
             - configMapRef:
                 name: dlp-runtime
+            - secretRef:
+                name: dlp-network
+                optional: true
           env:
             - name: DLP_METRICS_PORT
               value: "9103"
@@ -173,6 +179,9 @@ spec:
                 name: dlp-runtime
             - secretRef:
                 name: dlp-operator
+            - secretRef:
+                name: dlp-network
+                optional: true
           env:
             - name: DLP_METRICS_PORT
               value: "9104"
@@ -216,6 +225,9 @@ spec:
                 name: dlp-runtime
             - configMapRef:
                 name: dlp-contracts
+            - secretRef:
+                name: dlp-network
+                optional: true
           env:
             - name: DLP_LIQUIDATOR_WORKER_ID
               valueFrom:
@@ -302,6 +314,9 @@ spec:
                 name: dlp-runtime
             - configMapRef:
                 name: dlp-contracts
+            - secretRef:
+                name: dlp-network
+                optional: true
           env:
             - name: DLP_ORACLE_ASSET_ADDRESS
               valueFrom:
@@ -373,6 +388,9 @@ spec:
           envFrom:
             - configMapRef:
                 name: dlp-runtime
+            - secretRef:
+                name: dlp-network
+                optional: true
           ports:
             - name: http
               containerPort: 8080

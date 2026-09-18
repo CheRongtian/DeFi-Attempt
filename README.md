@@ -156,11 +156,14 @@ DeFi/
 │   ├── grafana/
 │   └── prometheus/
 ├── scripts/
+│   ├── check-sepolia-rpc.sh
 │   ├── create-liquidation-scenario.sh
 │   ├── configure-frontend.sh
 │   ├── deploy-local.sh
+│   ├── frontend.sh
 │   ├── prepare-frontend-demo.sh
 │   ├── run-containers.sh
+│   ├── run-final-demo.sh
 │   ├── run-kind.sh
 │   ├── run-local.sh
 │   ├── run-observability-tests.sh
@@ -184,6 +187,7 @@ DeFi/
 - macOS or Linux
 - Bash or Zsh
 - `curl`
+- `jq`
 - Python 3 for the observability result parser
 - A C++20 compiler and CMake 3.20 or newer
 - Node.js 22 or newer with npm
@@ -418,6 +422,32 @@ Run the end-to-end observability checks and collect their output under `artifact
 
 The runner records kind startup and every acceptance check in `summary.log`, waits for all ten Prometheus targets to complete a successful scrape, and then saves the target and metric snapshots. Generated artifacts are excluded from the Docker build context so writing logs does not invalidate the C++ image cache.
 
+## Sepolia RPC Integration and Final Demo
+
+Sepolia integration is limited to read-only RPC connectivity. Fill the three endpoint values in the ignored `.env.sepolia`; no wallet, private key, test ETH, contract address, deployment, or testnet transaction is required.
+
+```bash
+./scripts/check-sepolia-rpc.sh
+```
+
+The check confirms that the primary, failover, and browser-facing endpoints all report Sepolia chain ID `11155111`. It does not send a transaction.
+
+The complete protocol demonstration remains in the accepted local kind and Anvil environment:
+
+```bash
+./scripts/run-final-demo.sh --clean
+```
+
+The command first checks Sepolia RPC connectivity, then starts the local distributed stack, prepares the deterministic local demo accounts, and launches the Frontend. The local API is available at `http://127.0.0.1:18080`, Prometheus at `http://127.0.0.1:19090`, Grafana at `http://127.0.0.1:13000/d/dlp-overview`, and the Frontend at `http://127.0.0.1:4173`.
+
+Use the Frontend for the local wallet lifecycle and the existing local scripts for liquidation, observability, and recovery:
+
+```bash
+./scripts/create-liquidation-scenario.sh .env.kind
+./scripts/run-observability-tests.sh --clean
+./scripts/run-recovery-tests.sh --clean
+```
+
 ## Implemented Features
 
 ### Mock USDC
@@ -428,7 +458,7 @@ A test-only ERC-20 token that simulates USDC using OpenZeppelin Contracts.
 Name: Mock USDC
 Symbol: mUSDC
 Decimals: 6
-Minting: unrestricted for local and testnet use
+Minting: unrestricted for local demonstration and testing
 ```
 
 Files:
@@ -446,7 +476,7 @@ A test-only ERC-20 token used as WETH collateral. It does not implement ETH wrap
 Name: Mock WETH
 Symbol: mWETH
 Decimals: 18
-Minting: unrestricted for local and testnet use
+Minting: unrestricted for local demonstration and testing
 ```
 
 Files:
@@ -682,5 +712,19 @@ Files:
 ```text
 frontend/
 scripts/configure-frontend.sh
+scripts/prepare-frontend-demo.sh
+```
+
+### Sepolia RPC Integration and Local Final Demo
+
+The Sepolia boundary verifies primary, failover, and browser-facing RPC connectivity without keys or transactions. The final distributed demonstration reuses the accepted local kind and Anvil system.
+
+Files:
+
+```text
+.env.sepolia.example
+scripts/check-sepolia-rpc.sh
+scripts/run-final-demo.sh
+scripts/run-kind.sh
 scripts/prepare-frontend-demo.sh
 ```
