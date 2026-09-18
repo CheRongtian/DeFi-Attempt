@@ -76,6 +76,7 @@ cast send "$USDC_ADDRESS" "approve(address,uint256)" \
     "$POOL_ADDRESS" 115792089237316195423570985008687907853269984665640564039457584007913129639935 \
     --rpc-url "$RPC_URL" --private-key "$ANVIL_PRIVATE_KEY_VALUE" >/dev/null
 
+umask 077
 {
     printf 'export DLP_RPC_URL=%q\n' "$RPC_URL"
     printf 'export DLP_WETH_ADDRESS=%q\n' "$WETH_ADDRESS"
@@ -87,6 +88,7 @@ cast send "$USDC_ADDRESS" "approve(address,uint256)" \
     printf 'export DLP_OPERATOR_ADDRESS=%q\n' "$OPERATOR_ADDRESS"
     printf 'export DLP_OPERATOR_PRIVATE_KEY=%q\n' "$ANVIL_PRIVATE_KEY_VALUE"
 } > "$ENV_FILE"
+chmod 600 "$ENV_FILE"
 
 printf '\nLocal deployment complete:\n'
 printf '  WETH:         %s\n' "$WETH_ADDRESS"

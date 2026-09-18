@@ -23,7 +23,10 @@ spec:
               done
           env:
             - name: DLP_DATABASE_URL
-              value: postgresql://dlp:dlp@postgres:5432/dlp
+              valueFrom:
+                secretKeyRef:
+                  name: dlp-postgres
+                  key: DLP_DATABASE_URL
           volumeMounts:
             - name: migrations
               mountPath: /migrations

@@ -474,6 +474,16 @@ run-kind.sh        → ./scripts/frontend.sh .env.kind
 ./scripts/run-recovery-tests.sh --clean
 ```
 
+## 安全边界
+
+- Solidity 保存权威金融状态，并最终执行风险、提款、清算、利息和坏账校验。PostgreSQL、Indexer、Risk Engine 与 API 保存可重建的索引状态。
+- 用户交易始终遵循 `Frontend → User Wallet → Solidity`。Frontend 与 C++ API 不持有用户私钥，也不签署用户交易。
+- Tx Manager 只持有本地 operational signer。审批策略仅允许向已配置 Oracle 发送零 ETH 的 `publishPrice`，以及向已配置 Liquidation Manager 发送零 ETH 的 `liquidate`；其他目标、selector、calldata 结构和原生资产转账会被拒绝并写入审计日志。
+- Lending Pool 仅支持精确转账语义的 WETH 与 USDC。余额差校验会明确拒绝 fee-on-transfer、rebasing 及其他非精确代币转账。
+- 自动生成的 `.env.local`、`.env.kind`、`.env.containers` 和 Frontend `.env.local` 均被 Git 忽略，并以 `0600` 权限写入。手动创建 `.env.sepolia` 后执行 `chmod 600 .env.sepolia`。`VITE_` 变量会进入浏览器 Bundle，禁止在其中保存私钥、助记词或 API Secret。
+- Kubernetes 通过 Secret 注入数据库 URL 和 operational private key。仓库中的 `dlp` 数据库密码与 Anvil 私钥属于公开、可丢弃的本地开发凭据；离开本地 kind 环境时必须替换数据库 Secret，也不得在公共网络为 Anvil 账户充值或复用这些账户。
+- Sepolia 接入保持只读，只需要 RPC Endpoint，不加载 signer，也不发送交易。
+
 ## 已实现功能
 
 ### Mock USDC
@@ -551,7 +561,7 @@ contracts/test/RiskManager.t.sol
 
 ### 借贷池
 
-支持 USDC 流动性供应、WETH 抵押、USDC 借款与还款，以及安全提款。借贷池会检查可用流动性、借款额度、健康因子、最低债务和价格有效期，并维护指数化存款、债务和协议储备账目。
+支持 USDC 流动性供应、WETH 抵押、USDC 借款与还款，以及安全提款。借贷池会检查可用流动性、借款额度、健康因子、最低债务、价格有效期和精确代币余额差，并维护指数化存款、债务和协议储备账目。
 
 集成测试覆盖完整的供应、借款、还款和抵押物提款闭环。
 
@@ -649,7 +659,7 @@ tests/golden/risk_vectors.json
 
 ### 事务消息与租约清算
 
-PostgreSQL Transactional Outbox 记录由 Publisher 发送到 NATS JetStream，并由消费者幂等处理。清算任务使用数据库 Lease 和 Fencing Token，使多个 Liquidator 副本能够安全领取任务。持久化 Tx Manager 负责签名 EIP-1559 交易、恢复 nonce、替换停滞交易，并记录最终确认或 Reorg。
+PostgreSQL Transactional Outbox 记录由 Publisher 发送到 NATS JetStream，并由消费者幂等处理。清算任务使用数据库 Lease 和 Fencing Token，使多个 Liquidator 副本能够安全领取任务。持久化 Tx Manager 只签署已批准的 Oracle 与 Liquidation Manager 调用，负责恢复 nonce、替换停滞交易，并记录结构化审计事件、最终确认或 Reorg。
 
 文件：
 
@@ -665,7 +675,7 @@ scripts/create-liquidation-scenario.sh
 
 ### REST API
 
-基于 Boost.Beast 的 API Server 提供市场、仓位、健康因子、清算历史、协议统计和确定性风险模拟接口。读取响应包含已索引区块、当前链头和索引延迟。
+基于 Boost.Beast 的 API Server 提供市场、仓位、健康因子、清算历史、协议统计和确定性风险模拟接口。读取响应包含已索引区块、当前链头和索引延迟。请求体大小、处理时间和请求速率均有固定边界，内部异常会写入日志且不会向客户端暴露实现细节。
 
 接口：
 

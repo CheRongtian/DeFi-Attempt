@@ -1,6 +1,7 @@
 #include "dlp/api/ApiService.hpp"
 
 #include <chrono>
+#include <iostream>
 #include <string>
 #include <utility>
 
@@ -216,17 +217,23 @@ ApiResponse ApiService::Handle(const ApiRequest& request) const
         }
         return JsonResponse(404, Json{{"error", "route not found"}});
     }
-    catch(const nlohmann::json::exception& exception)
+    catch(const nlohmann::json::exception&)
     {
-        return JsonResponse(400, Json{{"error", exception.what()}});
+        return JsonResponse(400, Json{{"error", "invalid request"}});
     }
-    catch(const std::invalid_argument& exception)
+    catch(const std::invalid_argument&)
     {
-        return JsonResponse(400, Json{{"error", exception.what()}});
+        return JsonResponse(400, Json{{"error", "invalid request"}});
     }
     catch(const std::exception& exception)
     {
-        return JsonResponse(500, Json{{"error", exception.what()}});
+        std::clog << Json{
+            {"event", "api_request_failed"},
+            {"method", request.method},
+            {"target", request.target},
+            {"error", exception.what()}
+        }.dump() << '\n';
+        return JsonResponse(500, Json{{"error", "internal server error"}});
     }
 }
 

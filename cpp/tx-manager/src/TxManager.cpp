@@ -1,8 +1,12 @@
 #include "dlp/tx/TxManager.hpp"
 
 #include <algorithm>
+#include <iostream>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
+
+#include <nlohmann/json.hpp>
 
 #include "dlp/ethereum/Uint256Math.hpp"
 
@@ -19,6 +23,30 @@ namespace
         ethereum::Uint256{1'125},
         ethereum::Uint256{1'000}
     );
+}
+
+void Audit(const TxJob& job, std::string_view action)
+{
+    nlohmann::json record{
+        {"event", "transaction_audit"},
+        {"action", std::string{action}},
+        {"jobId", job.jobId},
+        {"chainId", job.chainId.ToDecimal()},
+        {"wallet", job.wallet.ToHex()},
+        {"destination", job.to.ToHex()},
+        {"value", job.value.ToDecimal()},
+        {"status", std::string{ToString(job.status)}},
+        {"retryCount", job.retryCount}
+    };
+    if(job.transactionHash.has_value())
+    {
+        record["transactionHash"] = ethereum::Hex::Encode(*job.transactionHash);
+    }
+    if(!job.errorMessage.empty())
+    {
+        record["error"] = job.errorMessage;
+    }
+    std::clog << record.dump() << '\n';
 }
 
 }
@@ -70,8 +98,35 @@ ethereum::Uint256 TxManager::AllocateNonce() const
     return nextStored > rpcNonce ? nextStored : rpcNonce;
 }
 
+bool TxManager::IsApproved(const TxJob& job) const
+{
+    if(job.value != ethereum::Uint256{})
+    {
+        return false;
+    }
+    return std::any_of(
+        config_.approvedCalls.begin(),
+        config_.approvedCalls.end(),
+        [&job](const ApprovedCall& approved) {
+            return job.to == approved.destination
+                && job.data.size() == approved.calldataSize
+                && job.data.size() >= approved.selector.size()
+                && std::equal(approved.selector.begin(), approved.selector.end(), job.data.begin());
+        }
+    );
+}
+
 void TxManager::Submit(TxJob& job, bool retry)
 {
+    if(!IsApproved(job))
+    {
+        job.status = TxStatus::Failed;
+        job.errorMessage = "transaction rejected by approval policy";
+        store_.Save(job);
+        Audit(job, "rejected");
+        return;
+    }
+
     bool broadcastAttempted = false;
     try
     {
@@ -82,6 +137,7 @@ void TxManager::Submit(TxJob& job, bool retry)
                 job.status = TxStatus::Failed;
                 job.errorMessage = "transaction retry limit reached";
                 store_.Save(job);
+                Audit(job, "failed");
                 return;
             }
             ++job.retryCount;
@@ -110,6 +166,7 @@ void TxManager::Submit(TxJob& job, bool retry)
         {
             job.status = TxStatus::Replaced;
             store_.Save(job);
+            Audit(job, "replaced");
             job.maxPriorityFeePerGas = BumpFee(*job.maxPriorityFeePerGas);
             job.maxFeePerGas = BumpFee(*job.maxFeePerGas);
         }
@@ -139,10 +196,12 @@ void TxManager::Submit(TxJob& job, bool retry)
         job.confirmationCount = 0;
         job.errorMessage.clear();
         store_.Save(job);
+        Audit(job, "approved");
         broadcastAttempted = true;
         const auto submittedHash = rpc_.SendRawTransaction(job.rawTransaction);
         job.transactionHash = submittedHash;
         store_.Save(job);
+        Audit(job, "broadcast");
     }
     catch(const ethereum::RpcException& exception)
     {
@@ -153,11 +212,13 @@ void TxManager::Submit(TxJob& job, bool retry)
         {
             job.status = TxStatus::Submitted;
             store_.Save(job);
+            Audit(job, "broadcast_uncertain");
             return;
         }
 
         job.status = job.retryCount >= config_.maximumRetries ? TxStatus::Failed : TxStatus::Pending;
         store_.Save(job);
+        Audit(job, job.status == TxStatus::Failed ? "failed" : "retry_pending");
     }
 }
 
@@ -176,6 +237,7 @@ void TxManager::Poll(TxJob& job)
                 job.errorMessage = "transaction execution reverted";
             }
             store_.Save(job);
+            Audit(job, receipt->succeeded ? "included" : "execution_failed");
             return;
         }
 
@@ -188,6 +250,7 @@ void TxManager::Poll(TxJob& job)
                 job.status = TxStatus::Failed;
                 job.errorMessage = "transaction was not included before the replacement limit";
                 store_.Save(job);
+                Audit(job, "failed");
             }
             else
             {
@@ -208,6 +271,7 @@ void TxManager::Poll(TxJob& job)
         job.status = TxStatus::Reorged;
         job.errorMessage = "included block is no longer canonical";
         store_.Save(job);
+        Audit(job, "reorged");
         return;
     }
 
@@ -220,6 +284,10 @@ void TxManager::Poll(TxJob& job)
         job.status = TxStatus::Finalized;
     }
     store_.Save(job);
+    if(job.status == TxStatus::Finalized)
+    {
+        Audit(job, "finalized");
+    }
 }
 
 TxManagerRunResult TxManager::RunOnce()

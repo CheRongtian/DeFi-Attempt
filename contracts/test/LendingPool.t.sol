@@ -13,11 +13,34 @@ import {PriceOracle} from "../src/PriceOracle.sol";
 import {RiskManager} from "../src/RiskManager.sol";
 import {MockUSDC} from "../src/mocks/MockUSDC.sol";
 import {MockWETH} from "../src/mocks/MockWETH.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 interface ILendingPoolVm {
     function warp(uint256 timestamp) external;
     function prank(address sender) external;
     function expectRevert(bytes calldata revertData) external;
+}
+
+contract FeeOnTransferUsdc is ERC20 {
+    constructor() ERC20("Fee USDC", "fUSDC") {}
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+
+    function _update(address from, address to, uint256 value) internal override {
+        if (from != address(0) && to != address(0)) {
+            uint256 fee = value / 100;
+            super._update(from, address(0), fee);
+            super._update(from, to, value - fee);
+            return;
+        }
+        super._update(from, to, value);
+    }
 }
 
 contract LendingPoolTest {
@@ -126,6 +149,29 @@ contract LendingPoolTest {
 
         assert(pool.usdcSupplies(CHARLIE) == 1_000e6);
         assert(pool.wethCollateral(ALICE) == 1e18);
+    }
+
+    function testFeeOnTransferAssetRejected() public {
+        FeeOnTransferUsdc feeUsdc = new FeeOnTransferUsdc();
+        RiskManager feeRiskManager = new RiskManager(oracle, address(weth), address(feeUsdc));
+        LendingPool feePool = new LendingPool(feeRiskManager);
+        uint256 amount = 100e6;
+
+        feeUsdc.mint(CHARLIE, amount);
+        VM.prank(CHARLIE);
+        require(feeUsdc.approve(address(feePool), amount), "fee USDC approval failed");
+
+        VM.expectRevert(
+            abi.encodeWithSelector(
+                LendingPool.UnexpectedTokenTransfer.selector,
+                address(feeUsdc),
+                amount,
+                amount,
+                99e6
+            )
+        );
+        VM.prank(CHARLIE);
+        feePool.supply(address(feeUsdc), amount);
     }
 
     function testAliceBorrowsUsdc() public {

@@ -59,6 +59,7 @@ contract LendingPool is ReentrancyGuard, AccessControl, IIndexProvider {
     error RemainingDebtBelowMinimum(uint256 remainingDebt, uint256 minimum);
     error LiquidationExceedsDebt(uint256 debt, uint256 repayment);
     error LiquidationExceedsCollateral(uint256 collateral, uint256 seized);
+    error UnexpectedTokenTransfer(address asset, uint256 expected, uint256 debited, uint256 credited);
 
     event Supplied(address indexed user, address indexed asset, uint256 amount);
     event Withdrawn(address indexed user, address indexed asset, uint256 amount);
@@ -154,7 +155,7 @@ contract LendingPool is ReentrancyGuard, AccessControl, IIndexProvider {
         } else {
             wethCollateral[msg.sender] += amount;
             totalWethCollateral += amount;
-            WETH.safeTransferFrom(msg.sender, address(this), amount);
+            _pullExact(WETH, msg.sender, amount);
         }
 
         emit Supplied(msg.sender, asset, amount);
@@ -192,7 +193,7 @@ contract LendingPool is ReentrancyGuard, AccessControl, IIndexProvider {
 
         availableUsdcLiquidity = available - amount;
         DEBT_TOKEN.mintScaled(msg.sender, scaledMint);
-        USDC.safeTransfer(msg.sender, amount);
+        _pushExact(USDC, msg.sender, amount);
 
         emit Borrowed(msg.sender, asset, amount);
     }
@@ -222,7 +223,7 @@ contract LendingPool is ReentrancyGuard, AccessControl, IIndexProvider {
 
         DEBT_TOKEN.burnScaled(msg.sender, scaledBurn);
         availableUsdcLiquidity += repaidAmount;
-        USDC.safeTransferFrom(msg.sender, address(this), repaidAmount);
+        _pullExact(USDC, msg.sender, repaidAmount);
 
         emit Repaid(msg.sender, asset, repaidAmount, remainingDebt);
     }
@@ -282,8 +283,8 @@ contract LendingPool is ReentrancyGuard, AccessControl, IIndexProvider {
 
         // The authorized manager supplies the initiating liquidator, who approved this pool directly.
         // forge-lint: disable-next-line(arbitrary-send-erc20)
-        USDC.safeTransferFrom(liquidator, address(this), repaidAmount);
-        WETH.safeTransfer(liquidator, collateralSeized);
+        _pullExact(USDC, liquidator, repaidAmount);
+        _pushExact(WETH, liquidator, collateralSeized);
 
         emit Liquidated(liquidator, borrower, address(USDC), address(WETH), repaidAmount, collateralSeized);
         if (recognizedBadDebt != 0) emit BadDebtRecognized(borrower, recognizedBadDebt);
@@ -300,7 +301,7 @@ contract LendingPool is ReentrancyGuard, AccessControl, IIndexProvider {
         if (amount > claimIncrease) protocolReserve += amount - claimIncrease;
 
         availableUsdcLiquidity += amount;
-        USDC.safeTransferFrom(msg.sender, address(this), amount);
+        _pullExact(USDC, msg.sender, amount);
     }
 
     function _withdrawUsdc(uint256 amount) private {
@@ -321,7 +322,7 @@ contract LendingPool is ReentrancyGuard, AccessControl, IIndexProvider {
         if (claimDecrease > amount) protocolReserve += claimDecrease - amount;
 
         availableUsdcLiquidity = available - amount;
-        USDC.safeTransfer(msg.sender, amount);
+        _pushExact(USDC, msg.sender, amount);
     }
 
     function _withdrawWeth(uint256 amount) private {
@@ -342,7 +343,40 @@ contract LendingPool is ReentrancyGuard, AccessControl, IIndexProvider {
 
         wethCollateral[msg.sender] = remainingCollateral;
         totalWethCollateral -= amount;
-        WETH.safeTransfer(msg.sender, amount);
+        _pushExact(WETH, msg.sender, amount);
+    }
+
+    /// @dev The MVP supports exact-transfer assets only. SafeERC20 handles optional return values;
+    ///      these balance checks reject fee-on-transfer, rebasing, or otherwise non-exact semantics.
+    function _pullExact(IERC20 token, address from, uint256 amount) private {
+        uint256 senderBalanceBefore = token.balanceOf(from);
+        uint256 poolBalanceBefore = token.balanceOf(address(this));
+
+        token.safeTransferFrom(from, address(this), amount);
+
+        uint256 senderBalanceAfter = token.balanceOf(from);
+        uint256 poolBalanceAfter = token.balanceOf(address(this));
+        uint256 debited = senderBalanceBefore >= senderBalanceAfter ? senderBalanceBefore - senderBalanceAfter : 0;
+        uint256 credited = poolBalanceAfter >= poolBalanceBefore ? poolBalanceAfter - poolBalanceBefore : 0;
+        if (debited != amount || credited != amount) {
+            revert UnexpectedTokenTransfer(address(token), amount, debited, credited);
+        }
+    }
+
+    function _pushExact(IERC20 token, address to, uint256 amount) private {
+        uint256 poolBalanceBefore = token.balanceOf(address(this));
+        uint256 recipientBalanceBefore = token.balanceOf(to);
+
+        token.safeTransfer(to, amount);
+
+        uint256 poolBalanceAfter = token.balanceOf(address(this));
+        uint256 recipientBalanceAfter = token.balanceOf(to);
+        uint256 debited = poolBalanceBefore >= poolBalanceAfter ? poolBalanceBefore - poolBalanceAfter : 0;
+        uint256 credited =
+            recipientBalanceAfter >= recipientBalanceBefore ? recipientBalanceAfter - recipientBalanceBefore : 0;
+        if (debited != amount || credited != amount) {
+            revert UnexpectedTokenTransfer(address(token), amount, debited, credited);
+        }
     }
 
     function _scaledDebtBurn(uint256 scaledBalance, uint256 repayment)

@@ -21,6 +21,22 @@ ethereum::Address Address(std::uint8_t suffix)
     return ethereum::Address{bytes};
 }
 
+const ethereum::Bytes APPROVED_DATA{1, 2, 3, 4};
+
+TxManagerConfig Config(
+    std::uint64_t confirmationDepth = 1,
+    std::uint64_t replacementAfterBlocks = 3,
+    std::uint32_t maximumRetries = 3
+)
+{
+    return TxManagerConfig{
+        confirmationDepth,
+        replacementAfterBlocks,
+        maximumRetries,
+        {ApprovedCall{Address(2), ethereum::FunctionSelector{1, 2, 3, 4}, APPROVED_DATA.size()}}
+    };
+}
+
 class MemoryStore final : public TransactionStore
 {
 public:
@@ -128,9 +144,9 @@ TEST(TxManagerTests, QueuesSubmitsIncludesAndFinalizesATransaction)
     ethereum::Secp256k1Signer signer{
         "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
     };
-    TxManager manager{store, rpc, signer};
+    TxManager manager{store, rpc, signer, Config()};
 
-    ASSERT_TRUE(manager.Queue("liquidation:1", Address(2), {1, 2, 3}));
+    ASSERT_TRUE(manager.Queue("liquidation:1", Address(2), APPROVED_DATA));
     manager.RunOnce();
     ASSERT_EQ(store.jobs.at("liquidation:1").status, TxStatus::Submitted);
     EXPECT_EQ(store.jobs.at("liquidation:1").nonce, ethereum::Uint256{7});
@@ -159,8 +175,8 @@ TEST(TxManagerTests, MarksAnOrphanedInclusionAsReorged)
     ethereum::Secp256k1Signer signer{
         "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
     };
-    TxManager manager{store, rpc, signer, TxManagerConfig{2, 3, 3}};
-    ASSERT_TRUE(manager.Queue("liquidation:2", Address(2), {1}));
+    TxManager manager{store, rpc, signer, Config(2, 3, 3)};
+    ASSERT_TRUE(manager.Queue("liquidation:2", Address(2), APPROVED_DATA));
     manager.RunOnce();
 
     ethereum::Hash256 includedHash{};
@@ -185,8 +201,8 @@ TEST(TxManagerTests, ReplacesAStaleSubmissionWithTheSameNonce)
     ethereum::Secp256k1Signer signer{
         "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
     };
-    TxManager manager{store, rpc, signer, TxManagerConfig{1, 1, 2}};
-    ASSERT_TRUE(manager.Queue("liquidation:3", Address(2), {1}));
+    TxManager manager{store, rpc, signer, Config(1, 1, 2)};
+    ASSERT_TRUE(manager.Queue("liquidation:3", Address(2), APPROVED_DATA));
     manager.RunOnce();
     const auto originalNonce = store.jobs.at("liquidation:3").nonce;
 
@@ -214,7 +230,7 @@ TEST(TxManagerTests, AllocatesAfterTheHighestRecoveredNonce)
     recovered.chainId = ethereum::Uint256{31337};
     recovered.wallet = signer.GetAddress();
     recovered.to = Address(2);
-    recovered.data = {1};
+    recovered.data = APPROVED_DATA;
     recovered.status = TxStatus::Included;
     recovered.nonce = ethereum::Uint256{8};
     recovered.transactionHash = ethereum::Hash256{};
@@ -222,8 +238,8 @@ TEST(TxManagerTests, AllocatesAfterTheHighestRecoveredNonce)
     recovered.includedBlockHash = ethereum::Hash256{};
     store.jobs.emplace(recovered.jobId, recovered);
 
-    TxManager manager{store, rpc, signer};
-    ASSERT_TRUE(manager.Queue("next", Address(2), {2}));
+    TxManager manager{store, rpc, signer, Config()};
+    ASSERT_TRUE(manager.Queue("next", Address(2), APPROVED_DATA));
     manager.RunOnce();
     EXPECT_EQ(store.jobs.at("next").nonce, ethereum::Uint256{9});
 }
@@ -236,9 +252,9 @@ TEST(TxManagerTests, CountsEachSubmissionRetryOnce)
     ethereum::Secp256k1Signer signer{
         "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
     };
-    TxManager manager{store, rpc, signer, TxManagerConfig{1, 3, 2}};
+    TxManager manager{store, rpc, signer, Config(1, 3, 2)};
 
-    ASSERT_TRUE(manager.Queue("liquidation:retry", Address(2), {1}));
+    ASSERT_TRUE(manager.Queue("liquidation:retry", Address(2), APPROVED_DATA));
     manager.RunOnce();
     EXPECT_EQ(store.jobs.at("liquidation:retry").status, TxStatus::Pending);
     EXPECT_EQ(store.jobs.at("liquidation:retry").retryCount, 0U);
@@ -251,6 +267,46 @@ TEST(TxManagerTests, CountsEachSubmissionRetryOnce)
     EXPECT_EQ(store.jobs.at("liquidation:retry").status, TxStatus::Failed);
     EXPECT_EQ(store.jobs.at("liquidation:retry").retryCount, 2U);
     EXPECT_EQ(rpc.sendCount, 3U);
+}
+
+TEST(TxManagerTests, RejectsCallsOutsideTheApprovalPolicy)
+{
+    MemoryStore store;
+    MemoryRpc rpc;
+    ethereum::Secp256k1Signer signer{
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+    };
+    TxManager manager{store, rpc, signer, Config()};
+
+    ASSERT_TRUE(manager.Queue("unexpected-target", Address(3), APPROVED_DATA));
+    ASSERT_TRUE(manager.Queue("unexpected-selector", Address(2), {9, 2, 3, 4}));
+    ASSERT_TRUE(manager.Queue("unexpected-size", Address(2), {1, 2, 3, 4, 5}));
+    manager.RunOnce();
+
+    EXPECT_EQ(store.jobs.at("unexpected-target").status, TxStatus::Failed);
+    EXPECT_EQ(store.jobs.at("unexpected-selector").status, TxStatus::Failed);
+    EXPECT_EQ(store.jobs.at("unexpected-size").status, TxStatus::Failed);
+    EXPECT_EQ(
+        store.jobs.at("unexpected-target").errorMessage,
+        "transaction rejected by approval policy"
+    );
+    EXPECT_EQ(rpc.sendCount, 0U);
+}
+
+TEST(TxManagerTests, RejectsTransactionsThatTransferNativeValue)
+{
+    MemoryStore store;
+    MemoryRpc rpc;
+    ethereum::Secp256k1Signer signer{
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+    };
+    TxManager manager{store, rpc, signer, Config()};
+
+    ASSERT_TRUE(manager.Queue("native-value", Address(2), APPROVED_DATA, ethereum::Uint256{1}));
+    manager.RunOnce();
+
+    EXPECT_EQ(store.jobs.at("native-value").status, TxStatus::Failed);
+    EXPECT_EQ(rpc.sendCount, 0U);
 }
 
 }

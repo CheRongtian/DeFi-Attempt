@@ -474,6 +474,16 @@ Use the Frontend for the local wallet lifecycle and the existing local scripts f
 ./scripts/run-recovery-tests.sh --clean
 ```
 
+## Security Boundaries
+
+- Solidity is the authoritative financial state and performs the final risk, withdrawal, liquidation, interest, and bad-debt checks. PostgreSQL, the Indexer, Risk Engine, and API contain rebuildable indexed state.
+- User transactions follow `Frontend → User Wallet → Solidity`. The Frontend and C++ API never hold user keys or sign user transactions.
+- The Transaction Manager owns only the local operational signer. Its approval policy permits zero-value `publishPrice` calls to the configured Oracle and zero-value `liquidate` calls to the configured Liquidation Manager; other destinations, selectors, calldata shapes, and native-value transfers are rejected and audited.
+- The Lending Pool supports exact-transfer WETH and USDC semantics. Balance-delta checks explicitly reject fee-on-transfer, rebasing, and other non-exact token transfers.
+- Generated `.env.local`, `.env.kind`, `.env.containers`, and Frontend `.env.local` files are ignored and written with mode `0600`. After creating `.env.sepolia` manually, run `chmod 600 .env.sepolia`. Never place private keys, seed phrases, or API secrets in a `VITE_` variable because Vite embeds those values in the browser bundle.
+- Kubernetes injects the database URL and operational private key through Secrets. The checked-in `dlp` database password and Anvil private keys are public, disposable local-development credentials; replace the database Secret outside a local kind environment and never fund or reuse the Anvil accounts on a public network.
+- Sepolia integration remains read-only and requires RPC endpoints only. It does not load a signer or send a transaction.
+
 ## Implemented Features
 
 ### Mock USDC
@@ -551,7 +561,7 @@ contracts/test/RiskManager.t.sol
 
 ### Lending Pool
 
-Supports USDC liquidity supply, WETH collateral, USDC borrowing and repayment, and safe withdrawals. The pool enforces available liquidity, borrowing capacity, health factor, minimum debt, and stale-price rules while maintaining indexed supply, debt, and reserve accounting.
+Supports USDC liquidity supply, WETH collateral, USDC borrowing and repayment, and safe withdrawals. The pool enforces available liquidity, borrowing capacity, health factor, minimum debt, stale-price rules, and exact token balance deltas while maintaining indexed supply, debt, and reserve accounting.
 
 An integration test covers the complete supply, borrow, repay, and collateral withdrawal lifecycle.
 
@@ -649,7 +659,7 @@ tests/golden/risk_vectors.json
 
 ### Transactional Messaging and Leased Liquidation
 
-PostgreSQL transactional outbox records are published to NATS JetStream and consumed idempotently. Liquidation jobs use database leases and fencing tokens so multiple Liquidator replicas can safely claim work. The persistent Transaction Manager signs EIP-1559 transactions, recovers nonces, replaces stale submissions, and records finality or reorgs.
+PostgreSQL transactional outbox records are published to NATS JetStream and consumed idempotently. Liquidation jobs use database leases and fencing tokens so multiple Liquidator replicas can safely claim work. The persistent Transaction Manager signs only approved Oracle and Liquidation Manager calls, recovers nonces, replaces stale submissions, and records structured audit events, finality, or reorgs.
 
 Files:
 
@@ -665,7 +675,7 @@ scripts/create-liquidation-scenario.sh
 
 ### REST API
 
-The Boost.Beast API Server exposes markets, positions, health factors, liquidation history, protocol statistics, and deterministic risk simulation. Read responses include the indexed block, observed chain head, and index lag.
+The Boost.Beast API Server exposes markets, positions, health factors, liquidation history, protocol statistics, and deterministic risk simulation. Read responses include the indexed block, observed chain head, and index lag. Request size, processing time, and request rate are bounded, and internal failures are logged without exposing implementation details to clients.
 
 Endpoints:
 

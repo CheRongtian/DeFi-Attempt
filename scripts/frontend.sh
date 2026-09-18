@@ -11,7 +11,8 @@ PORT=${DLP_FRONTEND_PORT:-4173}
 "$PROJECT_ROOT/scripts/configure-frontend.sh" "$ENV_FILE"
 
 cd "$FRONTEND_DIR"
-npm run build
+env -u DLP_OPERATOR_PRIVATE_KEY npm run build
 
 printf 'Frontend available at http://%s:%s\n' "$HOST" "$PORT"
-exec "$FRONTEND_DIR/node_modules/.bin/vite" preview --host "$HOST" --port "$PORT"
+exec env -u DLP_OPERATOR_PRIVATE_KEY \
+    "$FRONTEND_DIR/node_modules/.bin/vite" preview --host "$HOST" --port "$PORT"

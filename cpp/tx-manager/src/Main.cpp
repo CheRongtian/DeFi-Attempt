@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "dlp/ethereum/Abi.hpp"
+#include "dlp/ethereum/Address.hpp"
 #include "dlp/ethereum/Transaction.hpp"
 #include "dlp/ethereum/RpcEndpoints.hpp"
 #include "dlp/observability/Metrics.hpp"
@@ -111,6 +113,12 @@ int main(int argc, char* argv[])
         );
         dlp::tx::RpcTransactionClient rpc{transactionRpcs.front(), std::move(additionalRpcs)};
         dlp::ethereum::Secp256k1Signer signer{RequiredEnvironment("DLP_OPERATOR_PRIVATE_KEY")};
+        const auto oracle = dlp::ethereum::Address::FromHex(
+            RequiredEnvironment("DLP_ORACLE_ADDRESS")
+        );
+        const auto liquidationManager = dlp::ethereum::Address::FromHex(
+            RequiredEnvironment("DLP_LIQUIDATION_MANAGER_ADDRESS")
+        );
         dlp::tx::TxManager manager{
             store,
             rpc,
@@ -118,7 +126,23 @@ int main(int argc, char* argv[])
             dlp::tx::TxManagerConfig{
                 UnsignedEnvironment("DLP_TX_CONFIRMATIONS", "1"),
                 UnsignedEnvironment("DLP_TX_REPLACEMENT_BLOCKS", "3"),
-                static_cast<std::uint32_t>(UnsignedEnvironment("DLP_TX_MAX_RETRIES", "3"))
+                static_cast<std::uint32_t>(UnsignedEnvironment("DLP_TX_MAX_RETRIES", "3")),
+                {
+                    dlp::tx::ApprovedCall{
+                        oracle,
+                        dlp::ethereum::Abi::GetFunctionSelector(
+                            "publishPrice(address,uint256,uint256,uint256)"
+                        ),
+                        132
+                    },
+                    dlp::tx::ApprovedCall{
+                        liquidationManager,
+                        dlp::ethereum::Abi::GetFunctionSelector(
+                            "liquidate(address,address,address,uint256,uint256)"
+                        ),
+                        164
+                    }
+                }
             }
         };
         metrics.SetReady(true);

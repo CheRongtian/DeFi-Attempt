@@ -7,6 +7,7 @@
 #include <string_view>
 #include <vector>
 
+#include "dlp/ethereum/Abi.hpp"
 #include "dlp/ethereum/Transaction.hpp"
 #include "dlp/tx/TransactionRpc.hpp"
 #include "dlp/tx/TransactionStore.hpp"
@@ -14,11 +15,19 @@
 namespace dlp::tx
 {
 
+struct ApprovedCall
+{
+    ethereum::Address destination;
+    ethereum::FunctionSelector selector;
+    std::size_t calldataSize;
+};
+
 struct TxManagerConfig
 {
     std::uint64_t confirmationDepth{1};
     std::uint64_t replacementAfterBlocks{3};
     std::uint32_t maximumRetries{3};
+    std::vector<ApprovedCall> approvedCalls;
 };
 
 struct TxManagerRunResult
@@ -65,6 +74,7 @@ public:
 private:
     void Submit(TxJob& job, bool retry);
     void Poll(TxJob& job);
+    [[nodiscard]] bool IsApproved(const TxJob& job) const;
     [[nodiscard]] ethereum::Uint256 AllocateNonce() const;
 
     TransactionStore& store_;

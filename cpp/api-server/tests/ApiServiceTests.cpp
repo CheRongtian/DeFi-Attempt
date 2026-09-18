@@ -1,4 +1,5 @@
 #include <optional>
+#include <stdexcept>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -103,6 +104,15 @@ public:
     [[nodiscard]] std::uint64_t GetBlockNumber() const override { return 12; }
 };
 
+class FailingChain final : public ApiChain
+{
+public:
+    [[nodiscard]] std::uint64_t GetBlockNumber() const override
+    {
+        throw std::runtime_error("internal RPC failure detail");
+    }
+};
+
 }
 
 TEST(ApiServiceTests, ServesEveryConfiguredGetRoute)
@@ -171,6 +181,21 @@ TEST(ApiServiceTests, IncludesMarketConfigurationAndUsdcSupplyPosition)
     ASSERT_EQ(positionResponse.status, 200U);
     const auto position = nlohmann::json::parse(positionResponse.body).at("data");
     EXPECT_EQ(position.at("usdcSupply"), "7000000");
+}
+
+TEST(ApiServiceTests, DoesNotExposeInternalFailureDetails)
+{
+    MemoryRiskRepository repository;
+    risk::RiskEngine riskEngine{repository, ethereum::Uint256{31337}};
+    MemoryApiStore store;
+    FailingChain chain;
+    const ApiService service{riskEngine, store, chain, ethereum::Uint256{31337}};
+
+    const auto response = service.Handle(ApiRequest{"GET", "/markets", {}});
+
+    ASSERT_EQ(response.status, 500U);
+    EXPECT_EQ(nlohmann::json::parse(response.body).at("error"), "internal server error");
+    EXPECT_EQ(response.body.find("internal RPC failure detail"), std::string::npos);
 }
 
 }

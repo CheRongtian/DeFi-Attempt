@@ -29,6 +29,7 @@ FRONTEND_RPC_URL=${DLP_FRONTEND_RPC_URL:-$DLP_RPC_URL}
 CHAIN_ID=$(cast chain-id --rpc-url "$DLP_RPC_URL")
 CHAIN_NAME=${DLP_CHAIN_NAME:-Anvil Local}
 
+umask 077
 {
     printf 'VITE_API_BASE_URL=%s\n' "$API_URL"
     printf 'VITE_API_PROXY_TARGET=%s\n' "$API_PROXY_TARGET"
@@ -43,5 +44,6 @@ CHAIN_NAME=${DLP_CHAIN_NAME:-Anvil Local}
     printf 'VITE_WETH_ADDRESS=%s\n' "$DLP_WETH_ADDRESS"
     printf 'VITE_USDC_ADDRESS=%s\n' "$DLP_USDC_ADDRESS"
 } > "$FRONTEND_ENV"
+chmod 600 "$FRONTEND_ENV"
 
 printf 'Frontend environment written to %s\n' "$FRONTEND_ENV"

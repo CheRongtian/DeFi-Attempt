@@ -289,9 +289,13 @@ send_price()
 queue_price_job()
 {
     local job_id=$1
-    local price=$2
-    local calldata operator oracle
-    calldata=$(cast calldata "setPrice(address,uint256)" "$DLP_WETH_ADDRESS" "$price") || return 1
+    local calldata operator oracle current_round next_round reported_at
+    current_round=$(cast call "$DLP_ORACLE_ADDRESS" "latestRoundIds(address)(uint256)" \
+        "$DLP_USDC_ADDRESS" --rpc-url "$RPC_URL") || return 1
+    next_round=$((current_round + 1))
+    reported_at=$(cast block latest --field timestamp --rpc-url "$RPC_URL") || return 1
+    calldata=$(cast calldata "publishPrice(address,uint256,uint256,uint256)" \
+        "$DLP_USDC_ADDRESS" 100000000 "$reported_at" "$next_round") || return 1
     operator=$(printf '%s' "$DLP_OPERATOR_ADDRESS" | tr '[:upper:]' '[:lower:]')
     oracle=$(printf '%s' "$DLP_ORACLE_ADDRESS" | tr '[:upper:]' '[:lower:]')
 
@@ -427,7 +431,7 @@ test_pod_recovery()
     TX_MANAGER_MUTATED=true
     kube scale deployment/tx-manager --replicas=0 -n "$NAMESPACE" || return 1
     wait_until 60 "Tx Manager pod removal" pod_absent tx-manager || return 1
-    queue_price_job "$job_id" 300150000000 || return 1
+    queue_price_job "$job_id" || return 1
     kube scale deployment/tx-manager --replicas="$TX_MANAGER_REPLICAS" \
         -n "$NAMESPACE" || return 1
     kube rollout status deployment/tx-manager -n "$NAMESPACE" \
@@ -514,7 +518,7 @@ test_rpc_failover()
         return 1
     fi
 
-    queue_price_job "$job_id" 300500000000 || return 1
+    queue_price_job "$job_id" || return 1
     wait_until "$WAIT_SECONDS" "transaction finality through the failover RPC" \
         tx_status_is "$job_id" Finalized
 }
@@ -786,7 +790,7 @@ test_transaction_reorg()
         --timeout="${WAIT_SECONDS}s" || return 1
 
     ACTIVE_SNAPSHOT=$(cast rpc evm_snapshot --rpc-url "$RPC_URL" | tr -d '"') || return 1
-    queue_price_job "$job_id" 300800000000 || return 1
+    queue_price_job "$job_id" || return 1
     wait_until "$WAIT_SECONDS" "transaction inclusion before reorg" \
         tx_status_is "$job_id" Included || return 1
 

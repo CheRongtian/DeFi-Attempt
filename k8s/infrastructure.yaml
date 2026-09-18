@@ -8,6 +8,7 @@ stringData:
   database: dlp
   username: dlp
   password: dlp
+  DLP_DATABASE_URL: postgresql://dlp:dlp@postgres:5432/dlp
 ---
 apiVersion: v1
 kind: Service
